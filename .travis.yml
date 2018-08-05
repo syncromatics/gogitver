@@ -5,3 +5,5 @@ go:
 
 go_import_path: github.com/annymsMthd/gogitver
 
+script:
+  - make

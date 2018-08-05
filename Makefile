@@ -7,7 +7,7 @@ deps:
 	@which dep 2>/dev/null || go get -u ./...
 	@dep ensure -v
 
-build: deps
+build:
 	@go build -o $(BUILD_PATH) cmd/gogitver/main.go
 
 .PHONY: version

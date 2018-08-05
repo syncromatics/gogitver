@@ -22,9 +22,10 @@ type gitVersion struct {
 	PatchBump bool
 }
 
+// GetCurrentVerion returns the current version
 func GetCurrentVerion(path string) (version string, err error) {
-	tag, ok := os.LookupEnv("TRAVIS_TAG") // If this is a tagged build in travis shortcircuit here
-	if ok && tag != "" {
+	tag, ok := os.LookupEnv("TRAVIS_TAG")
+	if ok && tag != "" { // If this is a tagged build in travis shortcircuit here
 		version, err := semver.NewVersion(tag)
 		if err != nil {
 			return "", err

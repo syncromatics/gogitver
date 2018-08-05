@@ -23,6 +23,16 @@ type gitVersion struct {
 }
 
 func GetCurrentVerion(path string) (version string, err error) {
+	tag, ok := os.LookupEnv("TRAVIS_TAG") // If this is a tagged build in travis shortcircuit here
+	if ok && tag != "" {
+		version, err := semver.NewVersion(tag)
+		if err != nil {
+			return "", err
+		}
+
+		return version.String(), err
+	}
+
 	tagMap := make(map[string]string)
 
 	r, err := git.PlainOpen(path)

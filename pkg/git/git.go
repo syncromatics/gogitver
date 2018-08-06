@@ -134,7 +134,9 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 		}
 	}
 
-	baseVersion.PreRelease = semver.PreRelease(currentBranch)
+	shortHash := h.Hash().String()[:4]
+	prerelease := fmt.Sprintf("%s-%d-%s", currentBranch, len(versionMap)-1, shortHash)
+	baseVersion.PreRelease = semver.PreRelease(prerelease)
 
 	return baseVersion, nil
 }
@@ -176,6 +178,8 @@ func getMasterVersion(r *git.Repository, masterHead *plumbing.Reference, tagMap 
 			baseVersion.BumpMinor()
 		case v.PatchBump:
 			baseVersion.BumpPatch()
+		default: // every commit in master has at least a patch bump
+			baseVersion.BumpPatch()
 		}
 	}
 
@@ -211,7 +215,16 @@ func walkVersion(r *git.Repository, ref *object.Commit, tagMap map[string]string
 		return checkWalkParent(r, ref, tagMap, versionMap, endHash)
 	}
 
-	*versionMap = append(*versionMap, gitVersion{IsSolid: false, PatchBump: true})
+	matched, err = regexp.MatchString("(\\+semver: patch)|(\\+semver: fix)", ref.Message)
+	if err != nil {
+		return err
+	}
+	if matched {
+		*versionMap = append(*versionMap, gitVersion{IsSolid: false, PatchBump: true})
+		return checkWalkParent(r, ref, tagMap, versionMap, endHash)
+	}
+
+	*versionMap = append(*versionMap, gitVersion{IsSolid: false})
 
 	return checkWalkParent(r, ref, tagMap, versionMap, endHash)
 }

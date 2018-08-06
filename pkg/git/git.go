@@ -41,17 +41,17 @@ func GetCurrentVerion(path string) (version string, err error) {
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
 
-	tags, err := r.Tags()
+	tags, err := r.TagObjects()
 	if err != nil {
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
 
-	err = tags.ForEach(func(ref *plumbing.Reference) error {
-		c, err := r.CommitObject(ref.Hash())
+	err = tags.ForEach(func(ref *object.Tag) error {
+		c, err := ref.Commit()
 		if err != nil {
 			return errors.Wrap(err, "GetCurrentVersion failed")
 		}
-		tagMap[c.Hash.String()] = ref.Name().Short()
+		tagMap[c.Hash.String()] = ref.Name
 		return nil
 	})
 	if err != nil {

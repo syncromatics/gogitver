@@ -8,8 +8,12 @@ MAC_BUILD_PATH = $(BUILD_PATH)_darwin
 version: build
 	$(LINUX_BUILD_PATH)
 
-.PHONY: version build
-build:
+.PHONY: test
+test:
+	go test -v ./...
+
+.PHONY: build
+build: test
 	GOOS=linux GOARCH=amd64 go build -o $(LINUX_BUILD_PATH) cmd/gogitver/main.go
 	GOOS=linux GOARCH=arm go build -o $(LINUX_ARM_BUILD_PATH) cmd/gogitver/main.go
 	GOOS=darwin GOARCH=amd64 go build -o $(MAC_BUILD_PATH) cmd/gogitver/main.go

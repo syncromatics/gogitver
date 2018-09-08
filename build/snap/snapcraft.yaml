@@ -1,0 +1,25 @@
+name: gogitver
+version: '${VERSION}'
+summary: Provides semantic versioning through git history
+description: |
+  gogitver is a tool to determine the semantic version of a
+  project based on keywords used in the commit history. gogitver
+  draws a lot of inspiration from GitVersion but with the benefit
+  of go's single binary executable. With the work done by go-git
+  the binary produced can run on Linux, Windows, and Mac.
+
+grade: stable
+confinement: strict
+
+architectures:
+  - build-on: amd64
+
+parts:
+  gogitver:
+    source: ./source
+    plugin: dump
+
+apps:
+  gogitver:
+    command: gogitver
+    plugs: [home]

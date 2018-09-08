@@ -1,0 +1,5 @@
+Package: gogitver
+Version: ${VERSION}
+Maintainer: Joshua Benjamin <joshuabnjmn@gmail.com>
+Architecture: amd64
+Description: gogitver is a tool to determine the semantic version of a project based on keywords used in the commit history.

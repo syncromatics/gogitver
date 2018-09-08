@@ -2,8 +2,13 @@ language: go
 go:
 - 1.11.x
 go_import_path: github.com/annymsMthd/gogitver
+sudo: true
+
 script:
-- env GO111MODULE=on make build
+- sudo apt-get --yes install snapd
+- sudo snap install gogitver
+- env GO111MODULE=on PATH=$PATH:/snap/bin make package
+
 deploy:
   provider: releases
   api_key:

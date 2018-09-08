@@ -23,6 +23,16 @@ Currently the keywords are hardcoded but I'm planning on adding the ability to a
 * Minor: ```(+semver: minor) | (+semver: feature)```
 * Patch: ```(+semver: patch) | (+semver: fix)```
 
+## Development
+
+### Requirements
+
+This project requires at least [Go](https://golang.org/dl/) 1.11 because it makes use of go modules for dependencies. 
+
+### Building
+
+To build the project simply run ```make build``` which will generate the binaries and put them in the artifacts folder.
+
 ## Built With
 
 * [go-git](https://github.com/src-d/go-git) - The git interface

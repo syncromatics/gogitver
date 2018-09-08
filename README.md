@@ -1,6 +1,6 @@
 # gogitver
 
-gogitver is a tool to determine the semantic version of a project based on key words used in the commit history. This project draws a lot of inspiration from [GitVersion](https://github.com/GitTools/GitVersion) but with the benefit of go's single binary executable. With the work done by go-git the binary produced can run on Linux, Windows, and Mac.
+gogitver is a tool to determine the semantic version of a project based on keywords used in the commit history. This project draws a lot of inspiration from [GitVersion](https://github.com/GitTools/GitVersion) but with the benefit of go's single binary executable. With the work done by go-git the binary produced can run on Linux, Windows, and Mac.
 
 ## Getting Started
 
@@ -15,13 +15,23 @@ To get this most out of this tool you should be adding keywords to your git comm
 Example: 
 ```git commit -m "(+semver: breaking) this change adds a breaking change to the public api"```
 
-When gogitver sees this commit is the git history it will bump the major version.
+When gogitver sees this commit in the git history it will bump the major version.
 
-Currently the keywords are hardcoded but I'm planning on adding the ability to add a yaml config file to allow these to defined in the individual projects using the tool.
+The default regex patterns gogitver will use are:
 
-* Major: ```(+semver: major) | (+semver: breaking)```
-* Minor: ```(+semver: minor) | (+semver: feature)```
-* Patch: ```(+semver: patch) | (+semver: fix)```
+* Major: ```\+semver:\s?(breaking|major)```
+* Minor: ```\+semver:\s?(feature|minor)```
+* Patch: ```\+semver:\s?(fix|patch)```
+
+However you can override these by providing a settings file ```.gogitver.yaml``` that looks like:
+
+```yaml
+major-version-bump-message: '(major|breaking)\(.*\)'
+minor-version-bump-message: '(feat|feature|minor)\(.*\)'
+patch-version-bump-message: '(patch|fix)\(.*\)'
+```
+
+You can also override the name and location of this file by providing the settings flag ```gotgitver --settings=./anotherfile.yaml```
 
 ## Development
 

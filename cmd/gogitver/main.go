@@ -1,6 +1,6 @@
 package main
 
-import "github.com/annymsMthd/gogitver/cmd/gogitver/cmd"
+import "github.com/annymsmthd/gogitver/cmd/gogitver/cmd"
 
 func main() {
 	cmd.Execute()

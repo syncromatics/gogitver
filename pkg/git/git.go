@@ -22,8 +22,8 @@ type gitVersion struct {
 	PatchBump bool
 }
 
-// GetCurrentVerion returns the current version
-func GetCurrentVerion(path string) (version string, err error) {
+// GetCurrentVersion returns the current version
+func GetCurrentVersion(path string, settings *Settings) (version string, err error) {
 	tag, ok := os.LookupEnv("TRAVIS_TAG")
 	if ok && tag != "" { // If this is a tagged build in travis shortcircuit here
 		version, err := semver.NewVersion(tag)
@@ -63,7 +63,7 @@ func GetCurrentVerion(path string) (version string, err error) {
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
 
-	v, err := getVersion(r, h, tagMap)
+	v, err := getVersion(r, h, tagMap, settings)
 	if err != nil {
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
@@ -71,7 +71,7 @@ func GetCurrentVerion(path string) (version string, err error) {
 	return v.String(), nil
 }
 
-func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string) (version *semver.Version, err error) {
+func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string, settings *Settings) (version *semver.Version, err error) {
 	currentBranch, err := getCurrentBranch(r, h)
 	if err != nil {
 		return nil, errors.Wrap(err, "getVersion failed")
@@ -82,7 +82,7 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 		return nil, errors.Wrap(err, "getVersion failed")
 	}
 
-	masterVersion, err := getMasterVersion(r, masterHead, tagMap)
+	masterVersion, err := getMasterVersion(r, masterHead, tagMap, settings)
 	if err != nil {
 		return nil, errors.Wrap(err, "getVersion failed")
 	}
@@ -97,7 +97,7 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 	}
 
 	versionMap := []gitVersion{}
-	err = walkVersion(r, c, tagMap, &versionMap, masterHead.Hash().String())
+	err = walkVersion(r, c, tagMap, &versionMap, masterHead.Hash().String(), settings)
 	if err != nil {
 		return nil, errors.Wrap(err, "getVersion failed")
 	}
@@ -141,14 +141,14 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 	return baseVersion, nil
 }
 
-func getMasterVersion(r *git.Repository, masterHead *plumbing.Reference, tagMap map[string]string) (version *semver.Version, err error) {
+func getMasterVersion(r *git.Repository, masterHead *plumbing.Reference, tagMap map[string]string, settings *Settings) (version *semver.Version, err error) {
 	versionMap := []gitVersion{}
 
 	c, err := r.CommitObject(masterHead.Hash())
 	if err != nil {
 		return nil, err
 	}
-	err = walkVersion(r, c, tagMap, &versionMap, "")
+	err = walkVersion(r, c, tagMap, &versionMap, "", settings)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +186,7 @@ func getMasterVersion(r *git.Repository, masterHead *plumbing.Reference, tagMap 
 	return baseVersion, nil
 }
 
-func walkVersion(r *git.Repository, ref *object.Commit, tagMap map[string]string, versionMap *[]gitVersion, endHash string) error {
+func walkVersion(r *git.Repository, ref *object.Commit, tagMap map[string]string, versionMap *[]gitVersion, endHash string, settings *Settings) error {
 	tag, ok := tagMap[ref.Hash.String()]
 	if ok {
 		tagVersion, err := semver.NewVersion(tag)
@@ -197,39 +197,39 @@ func walkVersion(r *git.Repository, ref *object.Commit, tagMap map[string]string
 		return nil
 	}
 
-	matched, err := regexp.MatchString("(\\+semver: major)|(\\+semver: breaking)", ref.Message)
+	matched, err := regexp.MatchString(settings.MajorPattern, ref.Message)
 	if err != nil {
 		return err
 	}
 	if matched {
 		*versionMap = append(*versionMap, gitVersion{IsSolid: false, MajorBump: true})
-		return checkWalkParent(r, ref, tagMap, versionMap, endHash)
+		return checkWalkParent(r, ref, tagMap, versionMap, endHash, settings)
 	}
 
-	matched, err = regexp.MatchString("(\\+semver: minor)|(\\+semver: feature)", ref.Message)
+	matched, err = regexp.MatchString(settings.MinorPattern, ref.Message)
 	if err != nil {
 		return err
 	}
 	if matched {
 		*versionMap = append(*versionMap, gitVersion{IsSolid: false, MinorBump: true})
-		return checkWalkParent(r, ref, tagMap, versionMap, endHash)
+		return checkWalkParent(r, ref, tagMap, versionMap, endHash, settings)
 	}
 
-	matched, err = regexp.MatchString("(\\+semver: patch)|(\\+semver: fix)", ref.Message)
+	matched, err = regexp.MatchString(settings.PatchPattern, ref.Message)
 	if err != nil {
 		return err
 	}
 	if matched {
 		*versionMap = append(*versionMap, gitVersion{IsSolid: false, PatchBump: true})
-		return checkWalkParent(r, ref, tagMap, versionMap, endHash)
+		return checkWalkParent(r, ref, tagMap, versionMap, endHash, settings)
 	}
 
 	*versionMap = append(*versionMap, gitVersion{IsSolid: false})
 
-	return checkWalkParent(r, ref, tagMap, versionMap, endHash)
+	return checkWalkParent(r, ref, tagMap, versionMap, endHash, settings)
 }
 
-func checkWalkParent(r *git.Repository, ref *object.Commit, tagMap map[string]string, versionMap *[]gitVersion, endHash string) error {
+func checkWalkParent(r *git.Repository, ref *object.Commit, tagMap map[string]string, versionMap *[]gitVersion, endHash string, settings *Settings) error {
 	if ref.NumParents() == 0 {
 		return nil
 	}
@@ -243,7 +243,7 @@ func checkWalkParent(r *git.Repository, ref *object.Commit, tagMap map[string]st
 		return nil
 	}
 
-	return walkVersion(r, parent, tagMap, versionMap, endHash)
+	return walkVersion(r, parent, tagMap, versionMap, endHash, settings)
 }
 
 func getCurrentBranch(r *git.Repository, h *plumbing.Reference) (name string, err error) {

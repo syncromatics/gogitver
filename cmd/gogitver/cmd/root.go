@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/annymsMthd/gogitver/pkg/git"
+	"github.com/annymsmthd/gogitver/pkg/git"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +17,8 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.Flags().String("path", ".", "the path to the git repostiory")
+	rootCmd.Flags().String("path", ".", "the path to the git repository")
+	rootCmd.Flags().String("settings", "./.gogitver.yaml", "the file that contains the settings")
 }
 
 // Execute gogitver
@@ -29,8 +31,25 @@ func Execute() {
 
 func runRoot(cmd *cobra.Command, args []string) {
 	f := cmd.Flag("path")
+	sf := cmd.Flag("settings")
 
-	version, err := git.GetCurrentVerion(f.Value.String())
+	var s *git.Settings
+	_, err := os.Stat(sf.Value.String())
+	if sf.Changed || err == nil {
+		r, err := os.Open(sf.Value.String())
+		if err != nil {
+			panic(errors.Wrap(err, "cannot open settings file"))
+		}
+
+		s, err = git.GetSettingsFromFile(r)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		s = git.GetDefaultSettings()
+	}
+
+	version, err := git.GetCurrentVersion(f.Value.String(), s)
 	if err != nil {
 		panic(err)
 	}

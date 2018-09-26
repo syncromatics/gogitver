@@ -7,6 +7,8 @@ import (
 	"github.com/annymsmthd/gogitver/pkg/git"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+
+	gogit "gopkg.in/src-d/go-git.v4"
 )
 
 var rootCmd = &cobra.Command{
@@ -49,7 +51,12 @@ func runRoot(cmd *cobra.Command, args []string) {
 		s = git.GetDefaultSettings()
 	}
 
-	version, err := git.GetCurrentVersion(f.Value.String(), s)
+	r, err := gogit.PlainOpen(f.Value.String())
+	if err != nil {
+		panic(err)
+	}
+
+	version, err := git.GetCurrentVersion(r, s)
 	if err != nil {
 		panic(err)
 	}

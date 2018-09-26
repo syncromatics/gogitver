@@ -25,7 +25,6 @@ require (
 	golang.org/x/text v0.3.0
 	gopkg.in/src-d/go-billy.v4 v4.2.0
 	gopkg.in/src-d/go-git-fixtures.v3 v3.1.1 // indirect
-	gopkg.in/src-d/go-git.v4 v4.5.0
-	gopkg.in/warnings.v0 v0.1.2
+	gopkg.in/src-d/go-git.v4 v4.7.0
 	gopkg.in/yaml.v2 v2.2.1
 )

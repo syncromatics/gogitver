@@ -23,7 +23,7 @@ type gitVersion struct {
 }
 
 // GetCurrentVersion returns the current version
-func GetCurrentVersion(path string, settings *Settings) (version string, err error) {
+func GetCurrentVersion(r *git.Repository, settings *Settings) (version string, err error) {
 	tag, ok := os.LookupEnv("TRAVIS_TAG")
 	if ok && tag != "" { // If this is a tagged build in travis shortcircuit here
 		version, err := semver.NewVersion(tag)
@@ -36,20 +36,28 @@ func GetCurrentVersion(path string, settings *Settings) (version string, err err
 
 	tagMap := make(map[string]string)
 
-	r, err := git.PlainOpen(path)
+	// lightweight tags
+	ltags, err := r.Tags()
 	if err != nil {
-		return "", errors.Wrap(err, "GetCurrentVersion failed")
+		return "", errors.Wrap(err, "get tags failed")
 	}
 
+	err = ltags.ForEach(func(ref *plumbing.Reference) error {
+		name := ref.Name().String()
+		tagMap[ref.Hash().String()] = strings.Replace(name, "refs/tags/", "", -1)
+		return nil
+	})
+
+	// annotated tags
 	tags, err := r.TagObjects()
 	if err != nil {
-		return "", errors.Wrap(err, "GetCurrentVersion failed")
+		return "", errors.Wrap(err, "get tag objects failed")
 	}
 
 	err = tags.ForEach(func(ref *object.Tag) error {
 		c, err := ref.Commit()
 		if err != nil {
-			return errors.Wrap(err, "GetCurrentVersion failed")
+			return errors.Wrap(err, "get commit failed")
 		}
 		tagMap[c.Hash.String()] = ref.Name
 		return nil

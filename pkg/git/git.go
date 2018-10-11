@@ -23,9 +23,9 @@ type gitVersion struct {
 }
 
 // GetCurrentVersion returns the current version
-func GetCurrentVersion(r *git.Repository, settings *Settings) (version string, err error) {
+func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bool) (version string, err error) {
 	tag, ok := os.LookupEnv("TRAVIS_TAG")
-	if ok && tag != "" { // If this is a tagged build in travis shortcircuit here
+	if !ignoreTravisTag && ok && tag != "" { // If this is a tagged build in travis shortcircuit here
 		version, err := semver.NewVersion(tag)
 		if err != nil {
 			return "", err

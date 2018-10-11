@@ -56,7 +56,7 @@ func runRoot(cmd *cobra.Command, args []string) {
 		panic(err)
 	}
 
-	version, err := git.GetCurrentVersion(r, s)
+	version, err := git.GetCurrentVersion(r, s, false)
 	if err != nil {
 		panic(err)
 	}

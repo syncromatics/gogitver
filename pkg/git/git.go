@@ -3,7 +3,6 @@ package git
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/coreos/go-semver/semver"
@@ -90,9 +89,15 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 		return nil, errors.Wrap(err, "getVersion failed")
 	}
 
-	masterVersion, err := getMasterVersion(r, masterHead, tagMap, settings)
+	masterCommit, err := r.CommitObject(masterHead.Hash())
 	if err != nil {
-		return nil, errors.Wrap(err, "getVersion failed")
+		return nil, errors.Wrap(err, "failed to get master commit from reference")
+	}
+
+	masterWalker := newBranchWalker(r, masterCommit, tagMap, settings, true, "")
+	masterVersion, err := masterWalker.GetVersion()
+	if err != nil {
+		return nil, err
 	}
 
 	if h.Hash() == masterHead.Hash() {
@@ -104,10 +109,10 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 		return nil, errors.Wrap(err, "getVersion failed")
 	}
 
-	versionMap := []gitVersion{}
-	err = walkVersion(r, c, tagMap, &versionMap, masterHead.Hash().String(), settings)
+	walker := newBranchWalker(r, c, tagMap, settings, false, masterHead.Hash().String())
+	versionMap, err := walker.GetVersionMap()
 	if err != nil {
-		return nil, errors.Wrap(err, "getVersion failed")
+		return nil, err
 	}
 
 	var baseVersion *semver.Version
@@ -147,111 +152,6 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 	baseVersion.PreRelease = semver.PreRelease(prerelease)
 
 	return baseVersion, nil
-}
-
-func getMasterVersion(r *git.Repository, masterHead *plumbing.Reference, tagMap map[string]string, settings *Settings) (version *semver.Version, err error) {
-	versionMap := []gitVersion{}
-
-	c, err := r.CommitObject(masterHead.Hash())
-	if err != nil {
-		return nil, err
-	}
-	err = walkVersion(r, c, tagMap, &versionMap, "", settings)
-	if err != nil {
-		return nil, err
-	}
-
-	var baseVersion *semver.Version
-	index := len(versionMap) - 1
-	if versionMap[index].IsSolid {
-		baseVersion = versionMap[index].Name
-		index--
-	} else {
-		baseVersion, err = semver.NewVersion("0.0.0")
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if index < 0 {
-		return baseVersion, nil
-	}
-
-	for ; index >= 0; index-- {
-		v := versionMap[index]
-		switch {
-		case v.MajorBump:
-			baseVersion.BumpMajor()
-		case v.MinorBump:
-			baseVersion.BumpMinor()
-		case v.PatchBump:
-			baseVersion.BumpPatch()
-		default: // every commit in master has at least a patch bump
-			baseVersion.BumpPatch()
-		}
-	}
-
-	return baseVersion, nil
-}
-
-func walkVersion(r *git.Repository, ref *object.Commit, tagMap map[string]string, versionMap *[]gitVersion, endHash string, settings *Settings) error {
-	tag, ok := tagMap[ref.Hash.String()]
-	if ok {
-		tagVersion, err := semver.NewVersion(tag)
-		if err != nil {
-			return err
-		}
-		*versionMap = append(*versionMap, gitVersion{IsSolid: true, Name: tagVersion})
-		return nil
-	}
-
-	matched, err := regexp.MatchString(settings.MajorPattern, ref.Message)
-	if err != nil {
-		return err
-	}
-	if matched {
-		*versionMap = append(*versionMap, gitVersion{IsSolid: false, MajorBump: true})
-		return checkWalkParent(r, ref, tagMap, versionMap, endHash, settings)
-	}
-
-	matched, err = regexp.MatchString(settings.MinorPattern, ref.Message)
-	if err != nil {
-		return err
-	}
-	if matched {
-		*versionMap = append(*versionMap, gitVersion{IsSolid: false, MinorBump: true})
-		return checkWalkParent(r, ref, tagMap, versionMap, endHash, settings)
-	}
-
-	matched, err = regexp.MatchString(settings.PatchPattern, ref.Message)
-	if err != nil {
-		return err
-	}
-	if matched {
-		*versionMap = append(*versionMap, gitVersion{IsSolid: false, PatchBump: true})
-		return checkWalkParent(r, ref, tagMap, versionMap, endHash, settings)
-	}
-
-	*versionMap = append(*versionMap, gitVersion{IsSolid: false})
-
-	return checkWalkParent(r, ref, tagMap, versionMap, endHash, settings)
-}
-
-func checkWalkParent(r *git.Repository, ref *object.Commit, tagMap map[string]string, versionMap *[]gitVersion, endHash string, settings *Settings) error {
-	if ref.NumParents() == 0 {
-		return nil
-	}
-
-	parent, err := ref.Parent(0)
-	if err != nil {
-		return nil
-	}
-
-	if parent.Hash.String() == endHash {
-		return nil
-	}
-
-	return walkVersion(r, parent, tagMap, versionMap, endHash, settings)
 }
 
 func getCurrentBranch(r *git.Repository, h *plumbing.Reference) (name string, err error) {

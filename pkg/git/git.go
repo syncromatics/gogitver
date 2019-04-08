@@ -86,7 +86,10 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 
 	masterHead, err := r.Reference("refs/heads/master", false)
 	if err != nil {
-		return nil, errors.Wrap(err, "getVersion failed")
+		masterHead, err = r.Reference("refs/remotes/origin/master", false)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get master branch at 'refs/heads/master, 'refs/remotes/origin/master'")
+		}
 	}
 
 	masterCommit, err := r.CommitObject(masterHead.Hash())

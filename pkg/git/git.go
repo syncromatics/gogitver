@@ -160,12 +160,17 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 func getCurrentBranch(r *git.Repository, h *plumbing.Reference) (name string, err error) {
 	branchName := ""
 
-	name, ok := os.LookupEnv("TRAVIS_PULL_REQUEST_BRANCH")
+	name, ok := os.LookupEnv("TRAVIS_PULL_REQUEST_BRANCH") // Travis
 	if ok {
 		return cleanseBranchName(name), nil
 	}
 
 	name, ok = os.LookupEnv("TRAVIS_BRANCH")
+	if ok {
+		return cleanseBranchName(name), nil
+	}
+
+	name, ok = os.LookupEnv("CI_COMMIT_REF_NAME") // GitLab
 	if ok {
 		return cleanseBranchName(name), nil
 	}

@@ -4,12 +4,6 @@ LINUX_ARM_BUILD_PATH = $(BUILD_PATH)/arm/gogitver
 WINDOWS_BUILD_PATH = $(BUILD_PATH)/windows/gogitver.exe
 MAC_BUILD_PATH = $(BUILD_PATH)/darwin/gogitver
 
-export VERSION=$(shell gogitver)
-
-.PHONY: version
-version: build
-	$(LINUX_BUILD_PATH)
-
 .PHONY: clean
 clean:
 	rm -Rf ./artifacts

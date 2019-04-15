@@ -63,7 +63,7 @@ func TestUseLightweightTagForVersionAnchor(t *testing.T) {
 	}
 
 	s := igit.GetDefaultSettings()
-	version, err := igit.GetCurrentVersion(r, s, true)
+	version, err := igit.GetCurrentVersion(r, s, true, false)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -118,7 +118,7 @@ func TestUseAnnotatedTagForVersionAnchor(t *testing.T) {
 	}
 
 	s := igit.GetDefaultSettings()
-	version, err := igit.GetCurrentVersion(r, s, true)
+	version, err := igit.GetCurrentVersion(r, s, true, false)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()

@@ -22,7 +22,7 @@ type gitVersion struct {
 }
 
 // GetCurrentVersion returns the current version
-func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bool) (version string, err error) {
+func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bool, forbidBehindMaster bool) (version string, err error) {
 	tag, ok := os.LookupEnv("TRAVIS_TAG")
 	if !ignoreTravisTag && ok && tag != "" { // If this is a tagged build in travis shortcircuit here
 		version, err := semver.NewVersion(tag)
@@ -70,7 +70,7 @@ func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bo
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
 
-	v, err := getVersion(r, h, tagMap, settings)
+	v, err := getVersion(r, h, tagMap, forbidBehindMaster, settings)
 	if err != nil {
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
@@ -78,7 +78,7 @@ func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bo
 	return v.String(), nil
 }
 
-func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string, settings *Settings) (version *semver.Version, err error) {
+func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string, forbidBehindMaster bool, settings *Settings) (version *semver.Version, err error) {
 	currentBranch, err := getCurrentBranch(r, h)
 	if err != nil {
 		return nil, errors.Wrap(err, "getVersion failed")
@@ -125,9 +125,6 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 	}
 
 	if versionMap[index].IsSolid {
-		if versionMap[index].Name.LessThan(*masterVersion) {
-			return nil, errors.Errorf("Branch has tag '%s' whose version is less than master '%s'", versionMap[index].Name, masterVersion)
-		}
 		baseVersion = versionMap[index].Name
 		index--
 	} else {
@@ -153,6 +150,10 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 	shortHash := h.Hash().String()[:4]
 	prerelease := fmt.Sprintf("%s-%d-%s", currentBranch, len(versionMap)-1, shortHash)
 	baseVersion.PreRelease = semver.PreRelease(prerelease)
+
+	if forbidBehindMaster && baseVersion.LessThan(*masterVersion) {
+		return nil, errors.Errorf("Branch has calculated version '%s' whose version is less than master '%s'", baseVersion, masterVersion)
+	}
 
 	return baseVersion, nil
 }

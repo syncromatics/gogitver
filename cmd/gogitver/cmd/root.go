@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/annymsmthd/gogitver/pkg/git"
 	"github.com/pkg/errors"
@@ -21,6 +22,7 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.Flags().String("path", ".", "the path to the git repository")
 	rootCmd.Flags().String("settings", "./.gogitver.yaml", "the file that contains the settings")
+	rootCmd.Flags().Bool("forbid-behind-master", false, "error if the current branch's calculated version is behind the calculated version of refs/heads/master")
 }
 
 // Execute gogitver
@@ -34,9 +36,13 @@ func Execute() {
 func runRoot(cmd *cobra.Command, args []string) {
 	f := cmd.Flag("path")
 	sf := cmd.Flag("settings")
+	fbm, err := strconv.ParseBool(cmd.Flag("forbid-behind-master").Value.String())
+	if err != nil {
+		fbm = false
+	}
 
 	var s *git.Settings
-	_, err := os.Stat(sf.Value.String())
+	_, err = os.Stat(sf.Value.String())
 	if sf.Changed || err == nil {
 		r, err := os.Open(sf.Value.String())
 		if err != nil {
@@ -56,7 +62,7 @@ func runRoot(cmd *cobra.Command, args []string) {
 		panic(err)
 	}
 
-	version, err := git.GetCurrentVersion(r, s, false)
+	version, err := git.GetCurrentVersion(r, s, false, fbm)
 	if err != nil {
 		panic(err)
 	}

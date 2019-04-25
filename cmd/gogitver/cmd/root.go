@@ -19,10 +19,23 @@ var rootCmd = &cobra.Command{
 	Run:   runRoot,
 }
 
+var prereleaseCmd = &cobra.Command{
+	Use: "prerelease",
+	Short: "Gets the prerelease label, if any",
+	Long: ``,
+	Run: runPrerelease,
+}
+
 func init() {
-	rootCmd.Flags().String("path", ".", "the path to the git repository")
-	rootCmd.Flags().String("settings", "./.gogitver.yaml", "the file that contains the settings")
+	var cmds = [2]*cobra.Command{rootCmd, prereleaseCmd}
+	for _, cmd := range cmds {
+		cmd.Flags().String("path", ".", "the path to the git repository")
+		cmd.Flags().String("settings", "./.gogitver.yaml", "the file that contains the settings")
+	}
+
 	rootCmd.Flags().Bool("forbid-behind-master", false, "error if the current branch's calculated version is behind the calculated version of refs/heads/master")
+
+	rootCmd.AddCommand(prereleaseCmd)
 }
 
 // Execute gogitver
@@ -33,16 +46,12 @@ func Execute() {
 	}
 }
 
-func runRoot(cmd *cobra.Command, args []string) {
+func getRepoAndSettings(cmd *cobra.Command) (*gogit.Repository, *git.Settings) {
 	f := cmd.Flag("path")
 	sf := cmd.Flag("settings")
-	fbm, err := strconv.ParseBool(cmd.Flag("forbid-behind-master").Value.String())
-	if err != nil {
-		fbm = false
-	}
 
 	var s *git.Settings
-	_, err = os.Stat(sf.Value.String())
+	_, err := os.Stat(sf.Value.String())
 	if sf.Changed || err == nil {
 		r, err := os.Open(sf.Value.String())
 		if err != nil {
@@ -62,7 +71,29 @@ func runRoot(cmd *cobra.Command, args []string) {
 		panic(err)
 	}
 
+	return r, s
+}
+
+func runRoot(cmd *cobra.Command, args []string) {
+	r, s := getRepoAndSettings(cmd)
+
+	fbm, err := strconv.ParseBool(cmd.Flag("forbid-behind-master").Value.String())
+	if err != nil {
+		fbm = false
+	}
+
 	version, err := git.GetCurrentVersion(r, s, false, fbm)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(version)
+}
+
+func runPrerelease(cmd *cobra.Command, args[]string) {
+	r, s := getRepoAndSettings(cmd)
+
+	version, err := git.GetPrereleaseLabel(r, s)
 	if err != nil {
 		panic(err)
 	}

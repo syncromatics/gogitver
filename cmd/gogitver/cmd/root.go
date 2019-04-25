@@ -20,7 +20,7 @@ var rootCmd = &cobra.Command{
 }
 
 var prereleaseCmd = &cobra.Command{
-	Use: "prerelease",
+	Use: "label",
 	Short: "Gets the prerelease label, if any",
 	Long: ``,
 	Run: runPrerelease,
@@ -93,10 +93,14 @@ func runRoot(cmd *cobra.Command, args []string) {
 func runPrerelease(cmd *cobra.Command, args[]string) {
 	r, s := getRepoAndSettings(cmd)
 
-	version, err := git.GetPrereleaseLabel(r, s)
+	label, err := git.GetPrereleaseLabel(r, s)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println(version)
+	if label == "master" {
+		label = ""
+	}
+
+	fmt.Println(label)
 }

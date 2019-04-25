@@ -78,6 +78,15 @@ func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bo
 	return v.String(), nil
 }
 
+// GetPrereleaseLabel returns the prerelease label for the current branch
+func GetPrereleaseLabel(r *git.Repository, settings *Settings) (result string, err error) {
+	h, err := r.Head()
+	if err != nil {
+		return "", errors.Wrap(err, "GetCurrentVersion failed")
+	}
+	return getCurrentBranch(r, h)
+}
+
 func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string, forbidBehindMaster bool, settings *Settings) (version *semver.Version, err error) {
 	currentBranch, err := getCurrentBranch(r, h)
 	if err != nil {

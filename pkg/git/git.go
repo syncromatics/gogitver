@@ -3,6 +3,7 @@ package git
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/coreos/go-semver/semver"
@@ -207,5 +208,6 @@ func getCurrentBranch(r *git.Repository, h *plumbing.Reference) (name string, er
 }
 
 func cleanseBranchName(name string) string {
-	return strings.Replace(name, "/", "-", -1)
+	reg, _ := regexp.Compile("[^a-zA-Z0-9]+")
+	return reg.ReplaceAllString(name, "-")
 }

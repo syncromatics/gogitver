@@ -1,6 +1,7 @@
 package git_test
 
 import (
+	"fmt"
 	"path"
 	"testing"
 	"time"
@@ -63,7 +64,7 @@ func TestUseLightweightTagForVersionAnchor(t *testing.T) {
 	}
 
 	s := igit.GetDefaultSettings()
-	version, err := igit.GetCurrentVersion(r, s, true, false)
+	version, err := igit.GetCurrentVersion(r, s, true, false, false)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -118,13 +119,88 @@ func TestUseAnnotatedTagForVersionAnchor(t *testing.T) {
 	}
 
 	s := igit.GetDefaultSettings()
-	version, err := igit.GetCurrentVersion(r, s, true, false)
+	version, err := igit.GetCurrentVersion(r, s, true, false, false)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
 	}
 
 	assert.Equal(t, "1.5.0", version)
+}
+
+func TestTrimBranchPrefix(t *testing.T) {
+	r := getSingleBranchCommit("feature/should-be-trimmed", t)
+	s := igit.GetDefaultSettings()
+	label, err := igit.GetPrereleaseLabel(r, s, true)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	assert.Equal(t, "should-be-trimmed", label)
+}
+
+func TestCleanseBranchName(t *testing.T) {
+	r := getSingleBranchCommit("author's-branch", t)
+	s := igit.GetDefaultSettings()
+	label, err := igit.GetPrereleaseLabel(r, s, true)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	assert.Equal(t, "author-s-branch", label)
+}
+
+func getSingleBranchCommit(branchName string, t *testing.T) *git.Repository {
+	fs := memfs.New()
+	storage := memory.NewStorage()
+
+	r, err := git.Init(storage, fs)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	w, err := r.Worktree()
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	util.WriteFile(fs, "foo", []byte("foo"), 0644)
+	_, err = w.Add("foo")
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+	_, err = w.Commit("foo\n", &git.CommitOptions{Author: defaultSignature()})
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	ref := fmt.Sprintf("refs/heads/%s", branchName)
+	b := plumbing.ReferenceName(ref)
+	w.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Force: false,
+		Branch: b,
+	})
+
+	util.WriteFile(fs, "foo2", []byte("foo"), 0644)
+	_, err = w.Add("foo2")
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+	_, err = w.Commit("(+semver: major) This is a major commit\n", &git.CommitOptions{Author: defaultSignature()})
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	return r
 }
 
 func defaultSignature() *object.Signature {

@@ -31,6 +31,7 @@ func init() {
 	for _, cmd := range cmds {
 		cmd.Flags().String("path", ".", "the path to the git repository")
 		cmd.Flags().String("settings", "./.gogitver.yaml", "the file that contains the settings")
+		cmd.Flags().Bool("trim-branch-prefix", false, "Trim branch prefixes feature/ and hotfix/ from prerelease label")
 	}
 
 	rootCmd.Flags().Bool("forbid-behind-master", false, "error if the current branch's calculated version is behind the calculated version of refs/heads/master")
@@ -74,15 +75,20 @@ func getRepoAndSettings(cmd *cobra.Command) (*gogit.Repository, *git.Settings) {
 	return r, s
 }
 
+func getBoolFromFlag(cmd *cobra.Command, flagName string) bool {
+	result, err := strconv.ParseBool(cmd.Flag(flagName).Value.String())
+	if err != nil {
+		result = false
+	}
+	return result
+}
+
 func runRoot(cmd *cobra.Command, args []string) {
 	r, s := getRepoAndSettings(cmd)
 
-	fbm, err := strconv.ParseBool(cmd.Flag("forbid-behind-master").Value.String())
-	if err != nil {
-		fbm = false
-	}
-
-	version, err := git.GetCurrentVersion(r, s, false, fbm)
+	fbm := getBoolFromFlag(cmd, "forbid-behind-master")
+	trimPrefix := getBoolFromFlag(cmd, "trim-branch-prefix")
+	version, err := git.GetCurrentVersion(r, s, false, fbm, trimPrefix)
 	if err != nil {
 		panic(err)
 	}
@@ -92,8 +98,9 @@ func runRoot(cmd *cobra.Command, args []string) {
 
 func runPrerelease(cmd *cobra.Command, args[]string) {
 	r, s := getRepoAndSettings(cmd)
+	trimPrefix := getBoolFromFlag(cmd, "trim-branch-prefix")
 
-	label, err := git.GetPrereleaseLabel(r, s)
+	label, err := git.GetPrereleaseLabel(r, s, trimPrefix)
 	if err != nil {
 		panic(err)
 	}

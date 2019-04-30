@@ -23,7 +23,7 @@ type gitVersion struct {
 }
 
 // GetCurrentVersion returns the current version
-func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bool, forbidBehindMaster bool) (version string, err error) {
+func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bool, forbidBehindMaster bool, trimPrefix bool) (version string, err error) {
 	tag, ok := os.LookupEnv("TRAVIS_TAG")
 	if !ignoreTravisTag && ok && tag != "" { // If this is a tagged build in travis shortcircuit here
 		version, err := semver.NewVersion(tag)
@@ -71,7 +71,7 @@ func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bo
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
 
-	v, err := getVersion(r, h, tagMap, forbidBehindMaster, settings)
+	v, err := getVersion(r, h, tagMap, forbidBehindMaster, trimPrefix, settings)
 	if err != nil {
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
@@ -80,16 +80,16 @@ func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bo
 }
 
 // GetPrereleaseLabel returns the prerelease label for the current branch
-func GetPrereleaseLabel(r *git.Repository, settings *Settings) (result string, err error) {
+func GetPrereleaseLabel(r *git.Repository, settings *Settings, trimPrefix bool) (result string, err error) {
 	h, err := r.Head()
 	if err != nil {
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
-	return getCurrentBranch(r, h)
+	return getCurrentBranch(r, h, trimPrefix)
 }
 
-func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string, forbidBehindMaster bool, settings *Settings) (version *semver.Version, err error) {
-	currentBranch, err := getCurrentBranch(r, h)
+func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string, forbidBehindMaster bool, trimPrefix bool, settings *Settings) (version *semver.Version, err error) {
+	currentBranch, err := getCurrentBranch(r, h, trimPrefix)
 	if err != nil {
 		return nil, errors.Wrap(err, "getVersion failed")
 	}
@@ -168,22 +168,34 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 	return baseVersion, nil
 }
 
-func getCurrentBranch(r *git.Repository, h *plumbing.Reference) (name string, err error) {
+func getCurrentBranch(r *git.Repository, h *plumbing.Reference, trimPrefix bool) (name string, err error) {
 	branchName := ""
 
 	name, ok := os.LookupEnv("TRAVIS_PULL_REQUEST_BRANCH") // Travis
 	if ok {
-		return cleanseBranchName(name), nil
+		branchName, err := cleanseBranchName(name, trimPrefix)
+		if err != nil {
+			return "", err
+		}
+		return branchName, nil
 	}
 
 	name, ok = os.LookupEnv("TRAVIS_BRANCH")
 	if ok {
-		return cleanseBranchName(name), nil
+		branchName, err := cleanseBranchName(name, trimPrefix)
+		if err != nil {
+			return "", err
+		}
+		return branchName, nil
 	}
 
 	name, ok = os.LookupEnv("CI_COMMIT_REF_NAME") // GitLab
 	if ok {
-		return cleanseBranchName(name), nil
+		branchName, err := cleanseBranchName(name, trimPrefix)
+		if err != nil {
+			return "", err
+		}
+		return branchName, nil
 	}
 
 	refs, err := r.References()
@@ -204,10 +216,29 @@ func getCurrentBranch(r *git.Repository, h *plumbing.Reference) (name string, er
 		return "", fmt.Errorf("Cannot determine branch")
 	}
 
-	return cleanseBranchName(branchName), nil
+	branch, err := cleanseBranchName(branchName, trimPrefix)
+	if err != nil {
+		return "", err
+	}
+	return branch, nil
 }
 
-func cleanseBranchName(name string) string {
-	reg, _ := regexp.Compile("[^a-zA-Z0-9]+")
-	return reg.ReplaceAllString(name, "-")
+func cleanseBranchName(name string, trimPrefix bool) (string, error) {
+	reg, err := regexp.Compile("[^a-zA-Z0-9]+")
+	if err != nil {
+		return "", err
+	}
+
+	branchName := reg.ReplaceAllString(name, "-")
+	if !trimPrefix {
+		return branchName, nil
+	}
+
+	reg, err = regexp.Compile("^(feature|master)-")
+	if err != nil {
+		return "", err
+	}
+
+	branchName = reg.ReplaceAllString(branchName, "")
+	return branchName, nil
 }

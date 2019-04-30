@@ -13,6 +13,13 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 )
 
+// BranchSettings contains flags that determine how branches are handled when calculating versions.
+type BranchSettings struct {
+	ForbidBehindMaster bool
+	TrimBranchPrefix   bool
+	IgnoreEnvVars      bool
+}
+
 type gitVersion struct {
 	IsSolid bool
 	Name    *semver.Version
@@ -23,9 +30,9 @@ type gitVersion struct {
 }
 
 // GetCurrentVersion returns the current version
-func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bool, forbidBehindMaster bool, trimPrefix bool) (version string, err error) {
+func GetCurrentVersion(r *git.Repository, settings *Settings, branchSettings *BranchSettings) (version string, err error) {
 	tag, ok := os.LookupEnv("TRAVIS_TAG")
-	if !ignoreTravisTag && ok && tag != "" { // If this is a tagged build in travis shortcircuit here
+	if !branchSettings.IgnoreEnvVars && ok && tag != "" { // If this is a tagged build in travis shortcircuit here
 		version, err := semver.NewVersion(tag)
 		if err != nil {
 			return "", err
@@ -71,7 +78,7 @@ func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bo
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
 
-	v, err := getVersion(r, h, tagMap, forbidBehindMaster, trimPrefix, settings)
+	v, err := getVersion(r, h, tagMap, branchSettings, settings)
 	if err != nil {
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
@@ -80,16 +87,16 @@ func GetCurrentVersion(r *git.Repository, settings *Settings, ignoreTravisTag bo
 }
 
 // GetPrereleaseLabel returns the prerelease label for the current branch
-func GetPrereleaseLabel(r *git.Repository, settings *Settings, trimPrefix bool) (result string, err error) {
+func GetPrereleaseLabel(r *git.Repository, settings *Settings, branchSettings *BranchSettings) (result string, err error) {
 	h, err := r.Head()
 	if err != nil {
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
-	return getCurrentBranch(r, h, trimPrefix)
+	return getCurrentBranch(r, h, branchSettings)
 }
 
-func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string, forbidBehindMaster bool, trimPrefix bool, settings *Settings) (version *semver.Version, err error) {
-	currentBranch, err := getCurrentBranch(r, h, trimPrefix)
+func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string, branchSettings *BranchSettings, settings *Settings) (version *semver.Version, err error) {
+	currentBranch, err := getCurrentBranch(r, h, branchSettings)
 	if err != nil {
 		return nil, errors.Wrap(err, "getVersion failed")
 	}
@@ -161,41 +168,43 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 	prerelease := fmt.Sprintf("%s-%d-%s", currentBranch, len(versionMap)-1, shortHash)
 	baseVersion.PreRelease = semver.PreRelease(prerelease)
 
-	if forbidBehindMaster && baseVersion.LessThan(*masterVersion) {
+	if branchSettings.ForbidBehindMaster && baseVersion.LessThan(*masterVersion) {
 		return nil, errors.Errorf("Branch has calculated version '%s' whose version is less than master '%s'", baseVersion, masterVersion)
 	}
 
 	return baseVersion, nil
 }
 
-func getCurrentBranch(r *git.Repository, h *plumbing.Reference, trimPrefix bool) (name string, err error) {
+func getCurrentBranch(r *git.Repository, h *plumbing.Reference, branchSettings *BranchSettings) (name string, err error) {
 	branchName := ""
 
-	name, ok := os.LookupEnv("TRAVIS_PULL_REQUEST_BRANCH") // Travis
-	if ok {
-		branchName, err := cleanseBranchName(name, trimPrefix)
-		if err != nil {
-			return "", err
+	if !branchSettings.IgnoreEnvVars {
+		name, ok := os.LookupEnv("TRAVIS_PULL_REQUEST_BRANCH") // Travis
+		if ok {
+			branchName, err := cleanseBranchName(name, branchSettings.TrimBranchPrefix)
+			if err != nil {
+				return "", err
+			}
+			return branchName, nil
 		}
-		return branchName, nil
-	}
 
-	name, ok = os.LookupEnv("TRAVIS_BRANCH")
-	if ok {
-		branchName, err := cleanseBranchName(name, trimPrefix)
-		if err != nil {
-			return "", err
+		name, ok = os.LookupEnv("TRAVIS_BRANCH")
+		if ok {
+			branchName, err := cleanseBranchName(name, branchSettings.TrimBranchPrefix)
+			if err != nil {
+				return "", err
+			}
+			return branchName, nil
 		}
-		return branchName, nil
-	}
 
-	name, ok = os.LookupEnv("CI_COMMIT_REF_NAME") // GitLab
-	if ok {
-		branchName, err := cleanseBranchName(name, trimPrefix)
-		if err != nil {
-			return "", err
+		name, ok = os.LookupEnv("CI_COMMIT_REF_NAME") // GitLab
+		if ok {
+			branchName, err := cleanseBranchName(name, branchSettings.TrimBranchPrefix)
+			if err != nil {
+				return "", err
+			}
+			return branchName, nil
 		}
-		return branchName, nil
 	}
 
 	refs, err := r.References()
@@ -216,7 +225,7 @@ func getCurrentBranch(r *git.Repository, h *plumbing.Reference, trimPrefix bool)
 		return "", fmt.Errorf("Cannot determine branch")
 	}
 
-	branch, err := cleanseBranchName(branchName, trimPrefix)
+	branch, err := cleanseBranchName(branchName, branchSettings.TrimBranchPrefix)
 	if err != nil {
 		return "", err
 	}

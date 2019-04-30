@@ -20,10 +20,10 @@ var rootCmd = &cobra.Command{
 }
 
 var prereleaseCmd = &cobra.Command{
-	Use: "label",
+	Use:   "label",
 	Short: "Gets the prerelease label, if any",
-	Long: ``,
-	Run: runPrerelease,
+	Long:  ``,
+	Run:   runPrerelease,
 }
 
 func init() {
@@ -83,12 +83,20 @@ func getBoolFromFlag(cmd *cobra.Command, flagName string) bool {
 	return result
 }
 
+func getBranchSettings(cmd *cobra.Command) *git.BranchSettings {
+	fbm := getBoolFromFlag(cmd, "forbid-behind-master")
+	trimPrefix := getBoolFromFlag(cmd, "trim-branch-prefix")
+	return &git.BranchSettings{
+		ForbidBehindMaster: fbm,
+		TrimBranchPrefix:   trimPrefix,
+	}
+}
+
 func runRoot(cmd *cobra.Command, args []string) {
 	r, s := getRepoAndSettings(cmd)
 
-	fbm := getBoolFromFlag(cmd, "forbid-behind-master")
-	trimPrefix := getBoolFromFlag(cmd, "trim-branch-prefix")
-	version, err := git.GetCurrentVersion(r, s, false, fbm, trimPrefix)
+	branchSettings := getBranchSettings(cmd)
+	version, err := git.GetCurrentVersion(r, s, branchSettings)
 	if err != nil {
 		panic(err)
 	}
@@ -96,11 +104,14 @@ func runRoot(cmd *cobra.Command, args []string) {
 	fmt.Println(version)
 }
 
-func runPrerelease(cmd *cobra.Command, args[]string) {
+func runPrerelease(cmd *cobra.Command, args []string) {
 	r, s := getRepoAndSettings(cmd)
 	trimPrefix := getBoolFromFlag(cmd, "trim-branch-prefix")
+	branchSettings := &git.BranchSettings{
+		TrimBranchPrefix: trimPrefix,
+	}
 
-	label, err := git.GetPrereleaseLabel(r, s, trimPrefix)
+	label, err := git.GetPrereleaseLabel(r, s, branchSettings)
 	if err != nil {
 		panic(err)
 	}

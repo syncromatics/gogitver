@@ -64,7 +64,9 @@ func TestUseLightweightTagForVersionAnchor(t *testing.T) {
 	}
 
 	s := igit.GetDefaultSettings()
-	version, err := igit.GetCurrentVersion(r, s, true, false, false)
+	version, err := igit.GetCurrentVersion(r, s, &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	})
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -119,7 +121,9 @@ func TestUseAnnotatedTagForVersionAnchor(t *testing.T) {
 	}
 
 	s := igit.GetDefaultSettings()
-	version, err := igit.GetCurrentVersion(r, s, true, false, false)
+	version, err := igit.GetCurrentVersion(r, s, &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	})
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -131,7 +135,10 @@ func TestUseAnnotatedTagForVersionAnchor(t *testing.T) {
 func TestTrimBranchPrefix(t *testing.T) {
 	r := getSingleBranchCommit("feature/should-be-trimmed", t)
 	s := igit.GetDefaultSettings()
-	label, err := igit.GetPrereleaseLabel(r, s, true)
+	label, err := igit.GetPrereleaseLabel(r, s, &igit.BranchSettings{
+		IgnoreEnvVars:    true,
+		TrimBranchPrefix: true,
+	})
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -143,7 +150,9 @@ func TestTrimBranchPrefix(t *testing.T) {
 func TestCleanseBranchName(t *testing.T) {
 	r := getSingleBranchCommit("author's-branch", t)
 	s := igit.GetDefaultSettings()
-	label, err := igit.GetPrereleaseLabel(r, s, true)
+	label, err := igit.GetPrereleaseLabel(r, s, &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	})
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -184,7 +193,7 @@ func getSingleBranchCommit(branchName string, t *testing.T) *git.Repository {
 	b := plumbing.ReferenceName(ref)
 	w.Checkout(&git.CheckoutOptions{
 		Create: true,
-		Force: false,
+		Force:  false,
 		Branch: b,
 	})
 

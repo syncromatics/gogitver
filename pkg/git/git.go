@@ -234,7 +234,7 @@ func cleanseBranchName(name string, trimPrefix bool) (string, error) {
 		return branchName, nil
 	}
 
-	reg, err = regexp.Compile("^(feature|master)-")
+	reg, err = regexp.Compile("^(feature|hotfix)-")
 	if err != nil {
 		return "", err
 	}

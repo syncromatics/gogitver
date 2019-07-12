@@ -1,6 +1,7 @@
 package git
 
 import (
+	"log"
 	"regexp"
 
 	"gopkg.in/src-d/go-git.v4/plumbing"
@@ -18,6 +19,7 @@ type branchWalker struct {
 	settings   *Settings
 	isMaster   bool
 	endHash    string
+	verbose    bool
 
 	visited            map[string]bool
 	commitsToReconcile map[string]*gitVersion
@@ -27,7 +29,7 @@ type versionHolder struct {
 	versionMap []*gitVersion
 }
 
-func newBranchWalker(repository *git.Repository, head *object.Commit, tagMap map[string]string, settings *Settings, isMaster bool, endHash string) *branchWalker {
+func newBranchWalker(repository *git.Repository, head *object.Commit, tagMap map[string]string, settings *Settings, isMaster bool, endHash string, verbose bool) *branchWalker {
 	return &branchWalker{
 		repository:         repository,
 		head:               head,
@@ -37,6 +39,7 @@ func newBranchWalker(repository *git.Repository, head *object.Commit, tagMap map
 		endHash:            endHash,
 		visited:            make(map[string]bool),
 		commitsToReconcile: make(map[string]*gitVersion),
+		verbose:            verbose,
 	}
 }
 
@@ -48,8 +51,9 @@ func (b *branchWalker) GetVersion() (*semver.Version, error) {
 
 	var baseVersion *semver.Version
 	index := len(versionMap) - 1
-	if versionMap[index].IsSolid {
-		baseVersion = versionMap[index].Name
+	v := versionMap[index]
+	if v.IsSolid {
+		baseVersion = v.Name
 		index--
 	} else {
 		baseVersion, err = semver.NewVersion("0.0.0")
@@ -62,8 +66,11 @@ func (b *branchWalker) GetVersion() (*semver.Version, error) {
 		return baseVersion, nil
 	}
 
+	if b.verbose {
+		log.Printf("[%s] %s", v.Commit, baseVersion.String())
+	}
+
 	for ; index >= 0; index-- {
-		v := versionMap[index]
 		switch {
 		case v.MajorBump:
 			baseVersion.BumpMajor()
@@ -73,6 +80,9 @@ func (b *branchWalker) GetVersion() (*semver.Version, error) {
 			baseVersion.BumpPatch()
 		default: // every commit in master has at least a patch bump
 			baseVersion.BumpPatch()
+		}
+		if b.verbose {
+			log.Printf("[%s] %s", v.Commit, baseVersion.String())
 		}
 	}
 
@@ -114,13 +124,13 @@ func (b *branchWalker) walkVersion(ref *object.Commit, version *versionHolder, t
 		if err != nil {
 			return err
 		}
-		version.versionMap = append(version.versionMap, &gitVersion{IsSolid: true, Name: tagVersion})
+		version.versionMap = append(version.versionMap, &gitVersion{IsSolid: true, Name: tagVersion, Commit: ref.Hash.String()})
 		return nil
 	}
 
 	parents := ref.NumParents()
 	if parents > 1 {
-		versionToReconcile := gitVersion{IsSolid: false}
+		versionToReconcile := gitVersion{IsSolid: false, Commit: ref.Hash.String()}
 		version.versionMap = append(version.versionMap, &versionToReconcile)
 
 		b.commitsToReconcile[ref.Hash.String()] = &versionToReconcile
@@ -132,7 +142,7 @@ func (b *branchWalker) walkVersion(ref *object.Commit, version *versionHolder, t
 		return err
 	}
 	if matched {
-		version.versionMap = append(version.versionMap, &gitVersion{IsSolid: false, MajorBump: true})
+		version.versionMap = append(version.versionMap, &gitVersion{IsSolid: false, MajorBump: true, Commit: ref.Hash.String()})
 		return b.checkWalkParent(ref, version, tilVisited)
 	}
 
@@ -141,7 +151,7 @@ func (b *branchWalker) walkVersion(ref *object.Commit, version *versionHolder, t
 		return err
 	}
 	if matched {
-		version.versionMap = append(version.versionMap, &gitVersion{IsSolid: false, MinorBump: true})
+		version.versionMap = append(version.versionMap, &gitVersion{IsSolid: false, MinorBump: true, Commit: ref.Hash.String()})
 		return b.checkWalkParent(ref, version, tilVisited)
 	}
 
@@ -150,12 +160,11 @@ func (b *branchWalker) walkVersion(ref *object.Commit, version *versionHolder, t
 		return err
 	}
 	if matched {
-		version.versionMap = append(version.versionMap, &gitVersion{IsSolid: false, PatchBump: true})
+		version.versionMap = append(version.versionMap, &gitVersion{IsSolid: false, PatchBump: true, Commit: ref.Hash.String()})
 		return b.checkWalkParent(ref, version, tilVisited)
 	}
 
-	version.versionMap = append(version.versionMap, &gitVersion{IsSolid: false})
-
+	version.versionMap = append(version.versionMap, &gitVersion{IsSolid: false, Commit: ref.Hash.String()})
 	return b.checkWalkParent(ref, version, tilVisited)
 }
 

@@ -2,6 +2,7 @@ package git
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -27,17 +28,20 @@ type gitVersion struct {
 	MajorBump bool
 	MinorBump bool
 	PatchBump bool
+	Commit    string
 }
 
 // GetCurrentVersion returns the current version
-func GetCurrentVersion(r *git.Repository, settings *Settings, branchSettings *BranchSettings) (version string, err error) {
+func GetCurrentVersion(r *git.Repository, settings *Settings, branchSettings *BranchSettings, verbose bool) (version string, err error) {
 	tag, ok := os.LookupEnv("TRAVIS_TAG")
 	if !branchSettings.IgnoreEnvVars && ok && tag != "" { // If this is a tagged build in travis shortcircuit here
 		version, err := semver.NewVersion(tag)
 		if err != nil {
 			return "", err
 		}
-
+		if verbose {
+			log.Printf("Version determined using TRAVIS_TAG")
+		}
 		return version.String(), err
 	}
 
@@ -51,7 +55,11 @@ func GetCurrentVersion(r *git.Repository, settings *Settings, branchSettings *Br
 
 	err = ltags.ForEach(func(ref *plumbing.Reference) error {
 		name := ref.Name().String()
-		tagMap[ref.Hash().String()] = strings.Replace(name, "refs/tags/", "", -1)
+		tag := strings.Replace(name, "refs/tags/", "", -1)
+		if verbose {
+			log.Printf("Found lightweight tag %s for ref %s", tag, name)
+		}
+		tagMap[ref.Hash().String()] = tag
 		return nil
 	})
 
@@ -66,6 +74,9 @@ func GetCurrentVersion(r *git.Repository, settings *Settings, branchSettings *Br
 		if err != nil {
 			return errors.Wrap(err, "get commit failed")
 		}
+		if verbose {
+			log.Printf("Found tag %s", ref.Name)
+		}
 		tagMap[c.Hash.String()] = ref.Name
 		return nil
 	})
@@ -78,7 +89,7 @@ func GetCurrentVersion(r *git.Repository, settings *Settings, branchSettings *Br
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
 
-	v, err := getVersion(r, h, tagMap, branchSettings, settings)
+	v, err := getVersion(r, h, tagMap, branchSettings, settings, verbose)
 	if err != nil {
 		return "", errors.Wrap(err, "GetCurrentVersion failed")
 	}
@@ -95,10 +106,13 @@ func GetPrereleaseLabel(r *git.Repository, settings *Settings, branchSettings *B
 	return getCurrentBranch(r, h, branchSettings)
 }
 
-func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string, branchSettings *BranchSettings, settings *Settings) (version *semver.Version, err error) {
+func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string, branchSettings *BranchSettings, settings *Settings, verbose bool) (version *semver.Version, err error) {
 	currentBranch, err := getCurrentBranch(r, h, branchSettings)
 	if err != nil {
 		return nil, errors.Wrap(err, "getVersion failed")
+	}
+	if verbose {
+		log.Printf("Current branch is %s", currentBranch)
 	}
 
 	masterHead, err := r.Reference("refs/heads/master", false)
@@ -114,7 +128,7 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 		return nil, errors.Wrap(err, "failed to get master commit from reference")
 	}
 
-	masterWalker := newBranchWalker(r, masterCommit, tagMap, settings, true, "")
+	masterWalker := newBranchWalker(r, masterCommit, tagMap, settings, true, "", verbose)
 	masterVersion, err := masterWalker.GetVersion()
 	if err != nil {
 		return nil, err
@@ -129,7 +143,7 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 		return nil, errors.Wrap(err, "getVersion failed")
 	}
 
-	walker := newBranchWalker(r, c, tagMap, settings, false, masterHead.Hash().String())
+	walker := newBranchWalker(r, c, tagMap, settings, false, masterHead.Hash().String(), verbose)
 	versionMap, err := walker.GetVersionMap()
 	if err != nil {
 		return nil, err

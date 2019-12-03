@@ -2,6 +2,7 @@ package git
 
 import (
 	"regexp"
+	"strings"
 
 	"gopkg.in/src-d/go-git.v4/plumbing"
 
@@ -110,7 +111,8 @@ func (b *branchWalker) walkVersion(ref *object.Commit, version *versionHolder, t
 
 	tag, ok := b.tagMap[ref.Hash.String()]
 	if ok {
-		tagVersion, err := semver.NewVersion(tag)
+		ft := strings.Replace(tag, "v", "", -1)
+		tagVersion, err := semver.NewVersion(ft)
 		if err != nil {
 			return err
 		}

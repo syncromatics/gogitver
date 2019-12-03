@@ -24,3 +24,5 @@ require (
 	gopkg.in/src-d/go-git.v4 v4.7.1
 	gopkg.in/yaml.v2 v2.2.1
 )
+
+go 1.13

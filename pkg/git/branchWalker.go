@@ -111,7 +111,7 @@ func (b *branchWalker) walkVersion(ref *object.Commit, version *versionHolder, t
 
 	tag, ok := b.tagMap[ref.Hash.String()]
 	if ok {
-		ft := strings.Replace(tag, "v", "", -1)
+		ft := strings.TrimPrefix(tag, "v")
 		tagVersion, err := semver.NewVersion(ft)
 		if err != nil {
 			return err

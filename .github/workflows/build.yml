@@ -17,5 +17,69 @@ jobs:
         with:
           go-version: 1.13.1
 
+      - name: test
+        run: make test
+
+  release:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v1
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Prepare repository
+        run: git checkout "${GITHUB_REF:11}"
+
+      - name: Gogitver release
+        id: gogitver_release
+        uses: syncromatics/gogitver-release@0.0.9
+        with:
+          gogitver-version: "0.8.1"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.13.1
+  
       - name: build
-        run: make
+        run: make package
+
+      - uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.gogitver_release.outputs.upload_url }}
+          asset_path: ./artifacts/linux.tar.gz
+          asset_name: linux.tar.gz
+          asset_content_type: application/gzip
+
+      - uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.gogitver_release.outputs.upload_url }}
+          asset_path: ./artifacts/windows.zip
+          asset_name: windows.zip
+          asset_content_type: application/zip
+
+      - uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.gogitver_release.outputs.upload_url }}
+          asset_path: ./artifacts/arm.tar.gz
+          asset_name: arm.tar.gz
+          asset_content_type: application/gzip
+
+      - uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.gogitver_release.outputs.upload_url }}
+          asset_path: ./artifacts/darwin.tar.gz
+          asset_name: darwin.tar.gz
+          asset_content_type: application/gzip

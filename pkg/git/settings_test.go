@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/annymsmthd/gogitver/pkg/git"
+	"github.com/syncromatics/gogitver/pkg/git"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -15,7 +15,7 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	"gopkg.in/src-d/go-git.v4/storage/memory"
 
-	igit "github.com/annymsmthd/gogitver/pkg/git"
+	igit "github.com/syncromatics/gogitver/pkg/git"
 )
 
 func TestUseLightweightTagForVersionAnchor(t *testing.T) {

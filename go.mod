@@ -1,7 +1,8 @@
-module github.com/annymsmthd/gogitver
+module github.com/syncromatics/gogitver
+
+go 1.13
 
 require (
-	github.com/annymsMthd/gogitver v0.0.0-20180908171811-f2ce3b7e446d
 	github.com/coreos/go-semver v0.2.0
 	github.com/emirpasic/gods v1.9.0
 	github.com/inconshreveable/mousetrap v1.0.0
@@ -24,5 +25,3 @@ require (
 	gopkg.in/src-d/go-git.v4 v4.7.1
 	gopkg.in/yaml.v2 v2.2.1
 )
-
-go 1.13

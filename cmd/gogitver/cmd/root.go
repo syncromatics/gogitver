@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/annymsmthd/gogitver/pkg/git"
+	"github.com/syncromatics/gogitver/pkg/git"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 

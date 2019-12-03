@@ -11,7 +11,7 @@ gogitver is a tool to determine the semantic version of a project based on keywo
 
 #### Binaries
 
-To install download the latest release from the [releases](https://github.com/annymsMthd/gogitver/releases) page for your machine architecture and place the binary in your path. You can then run the executable while in the path of your project and it should output the current version. You can then use this version to tag container images, helm charts, etc.
+To install download the latest release from the [releases](https://github.com/syncromatics/gogitver/releases) page for your machine architecture and place the binary in your path. You can then run the executable while in the path of your project and it should output the current version. You can then use this version to tag container images, helm charts, etc.
 
 ### Usage
 

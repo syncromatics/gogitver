@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 
@@ -32,6 +33,7 @@ func init() {
 		cmd.Flags().String("path", ".", "the path to the git repository")
 		cmd.Flags().String("settings", "./.gogitver.yaml", "the file that contains the settings")
 		cmd.Flags().Bool("trim-branch-prefix", false, "Trim branch prefixes feature/ and hotfix/ from prerelease label")
+		cmd.Flags().BoolP("verbose", "v", false, "Show information about how the version was calculated")
 	}
 
 	rootCmd.Flags().Bool("forbid-behind-master", false, "error if the current branch's calculated version is behind the calculated version of refs/heads/master")
@@ -94,9 +96,14 @@ func getBranchSettings(cmd *cobra.Command) *git.BranchSettings {
 
 func runRoot(cmd *cobra.Command, args []string) {
 	r, s := getRepoAndSettings(cmd)
+	v := getBoolFromFlag(cmd, "verbose")
+
+	if v {
+		log.SetFlags(0)
+	}
 
 	branchSettings := getBranchSettings(cmd)
-	version, err := git.GetCurrentVersion(r, s, branchSettings)
+	version, err := git.GetCurrentVersion(r, s, branchSettings, v)
 	if err != nil {
 		panic(err)
 	}

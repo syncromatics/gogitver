@@ -32,13 +32,19 @@ jobs:
       - name: Prepare repository
         run: git checkout "${GITHUB_REF:11}"
 
-      - name: Gogitver release
-        id: gogitver_release
-        uses: syncromatics/gogitver-release@0.0.9
-        with:
-          gogitver-version: "0.8.1"
+      - uses: syncromatics/gogitver-action@v0.0.2
+        id: gogitver
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.gogitver.outputs.version }}
+          release_name: Release ${{ steps.gogitver.outputs.version }}
+          draft: false
+          prerelease: false
 
       - name: Install Go
         uses: actions/setup-go@v1
@@ -52,7 +58,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.gogitver_release.outputs.upload_url }}
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./artifacts/linux.tar.gz
           asset_name: linux.tar.gz
           asset_content_type: application/gzip
@@ -61,7 +67,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.gogitver_release.outputs.upload_url }}
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./artifacts/windows.zip
           asset_name: windows.zip
           asset_content_type: application/zip
@@ -70,7 +76,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.gogitver_release.outputs.upload_url }}
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./artifacts/arm.tar.gz
           asset_name: arm.tar.gz
           asset_content_type: application/gzip
@@ -79,7 +85,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.gogitver_release.outputs.upload_url }}
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./artifacts/darwin.tar.gz
           asset_name: darwin.tar.gz
           asset_content_type: application/gzip

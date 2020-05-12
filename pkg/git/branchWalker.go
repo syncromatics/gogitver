@@ -72,6 +72,7 @@ func (b *branchWalker) GetVersion() (*semver.Version, error) {
 	}
 
 	for ; index >= 0; index-- {
+		v := versionMap[index]
 		switch {
 		case v.MajorBump:
 			baseVersion.BumpMajor()

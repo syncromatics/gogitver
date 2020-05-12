@@ -18,6 +18,209 @@ import (
 	igit "github.com/syncromatics/gogitver/pkg/git"
 )
 
+func TestSimple(t *testing.T) {
+	fs := memfs.New()
+	storage := memory.NewStorage()
+
+	r, err := git.Init(storage, fs)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	w, err := r.Worktree()
+	util.WriteFile(fs, "foo", []byte("foo"), 0644)
+
+	_, err = w.Add("foo")
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	_, err = w.Commit("foo\n", &git.CommitOptions{Author: defaultSignature()})
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	util.WriteFile(fs, "foo2", []byte("foo"), 0644)
+
+	_, err = w.Add("foo2")
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	_, err = w.Commit("(+semver: breaking) This is a major commit\n", &git.CommitOptions{Author: defaultSignature()})
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	_, err = w.Commit("(+semver: feature) This is a minor commit\n", &git.CommitOptions{Author: defaultSignature()})
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	_, err = w.Commit("(+semver: fix) This is a patch commit\n", &git.CommitOptions{Author: defaultSignature()})
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	s := igit.GetDefaultSettings()
+	version, err := igit.GetCurrentVersion(r, s, &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}, false)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	assert.Equal(t, "1.1.1", version)
+}
+
+func TestBranch(t *testing.T) {
+	// Arrange
+	fs := memfs.New()
+	storage := memory.NewStorage()
+
+	repository, err := git.Init(storage, fs)
+	assert.Nil(t, err)
+
+	w, err := repository.Worktree()
+	util.WriteFile(fs, "foo", []byte("foo"), 0644)
+
+	_, err = w.Add("foo")
+	assert.Nil(t, err)
+
+	_, err = w.Commit("foo\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	util.WriteFile(fs, "foo2", []byte("foo"), 0644)
+
+	_, err = w.Add("foo2")
+	assert.Nil(t, err)
+
+	_, err = w.Commit("(+semver: breaking) This is a major commit\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	_, err = w.Commit("(+semver: feature) This is a minor commit\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	_, err = w.Commit("(+semver: fix) This is a patch commit\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	branch := plumbing.ReferenceName("refs/heads/not-master")
+	err = w.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: branch,
+	})
+	assert.Nil(t, err)
+	
+	hash, err := w.Commit("(+semver: fix) This is a patch commit on not-master\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+	
+	// Act
+	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
+	assert.Nil(t, err)
+
+	// Assert
+	shortHash := hash.String()[0:4]
+	assert.Equal(t, fmt.Sprintf("1.1.2-not-master-0-%s", shortHash), version)
+}
+
+func TestMergeWithMajorChangeInBranch(t *testing.T) {
+	// Arrange
+	fs := memfs.New()
+	storage := memory.NewStorage()
+
+	repository, err := git.Init(storage, fs)
+	assert.Nil(t, err)
+
+	w, err := repository.Worktree()
+	util.WriteFile(fs, "foo", []byte("foo"), 0644)
+
+	_, err = w.Add("foo")
+	assert.Nil(t, err)
+
+	_, err = w.Commit("foo\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	util.WriteFile(fs, "foo2", []byte("foo"), 0644)
+
+	_, err = w.Add("foo2")
+	assert.Nil(t, err)
+
+	_, err = w.Commit("(+semver: breaking) This is a major commit\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	_, err = w.Commit("(+semver: feature) This is a minor commit\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	masterHash, err := w.Commit("(+semver: fix) This is a patch commit\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	branch := plumbing.ReferenceName("refs/heads/not-master")
+	err = w.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: branch,
+		Hash: masterHash,
+	})
+	assert.Nil(t, err)
+	
+	_, err = w.Commit("(+semver: minor) This is a minor commit on not-master\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	branch1Hash, err := w.Commit("(+semver: patch) This is a patch commit on not-master\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	branch = plumbing.ReferenceName("refs/heads/also-not-master")
+	err = w.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: branch,
+		Hash: masterHash,
+	})
+	assert.Nil(t, err)
+
+	branch2Hash, err := w.Commit("(+semver: major) This is a major commit on also-not-master\n", &git.CommitOptions{Author: defaultSignature()})
+	assert.Nil(t, err)
+
+	branch = plumbing.ReferenceName("refs/heads/master")
+	err = w.Checkout(&git.CheckoutOptions{
+		Branch: branch,
+	})
+	assert.Nil(t, err)
+
+	_, err = w.Commit("Merge commit\n", &git.CommitOptions{
+		Author: defaultSignature(),
+		Parents: []plumbing.Hash{
+			masterHash,
+			branch1Hash,
+			branch2Hash,
+		},
+	})
+	assert.Nil(t, err)
+
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+	
+	// Act
+	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
+	assert.Nil(t, err)
+
+	// Assert
+	assert.Equal(t, "2.0.0", version)
+}
+
 func TestUseLightweightTagForVersionAnchor(t *testing.T) {
 	fs := memfs.New()
 	storage := memory.NewStorage()

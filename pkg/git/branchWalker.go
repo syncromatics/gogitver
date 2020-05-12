@@ -190,27 +190,29 @@ func (b *branchWalker) checkWalkParent(ref *object.Commit, version *versionHolde
 }
 
 func (b *branchWalker) reconcileCommit(hash string, version *gitVersion) error {
-	versionMap := versionHolder{
-		versionMap: []*gitVersion{},
-	}
-
 	commit, err := b.repository.CommitObject(plumbing.NewHash(hash))
 	if err != nil {
 		return errors.Wrap(err, "failed to get commit in reconcile")
 	}
 
-	if commit.NumParents() <= 1 {
+	numParents := commit.NumParents()
+	if numParents <= 1 {
 		return nil
 	}
 
-	parentToWalk, err := commit.Parent(1)
-	if err != nil {
-		return errors.Wrap(err, "failed to get parent in reconcile")
+	versionMap := versionHolder{
+		versionMap: []*gitVersion{},
 	}
-
-	err = b.walkVersion(parentToWalk, &versionMap, true)
-	if err != nil {
-		return err
+	for i := 1; i < numParents; i++ {
+		parentToWalk, err := commit.Parent(i)
+		if err != nil {
+			return errors.Wrap(err, "failed to get parent in reconcile")
+		}
+	
+		err = b.walkVersion(parentToWalk, &versionMap, true)
+		if err != nil {
+			return err
+		}
 	}
 
 	var hasMajor, hasMinor bool

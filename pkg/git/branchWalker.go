@@ -122,8 +122,7 @@ func (b *branchWalker) walkVersion(ref *object.Commit, version *versionHolder, t
 
 	tag, ok := b.tagMap[ref.Hash.String()]
 	if ok {
-		ft := strings.TrimPrefix(tag, "v")
-		tagVersion, err := semver.NewVersion(ft)
+		tagVersion, err := parseTag(tag)
 		if err != nil {
 			return err
 		}
@@ -234,4 +233,14 @@ func (b *branchWalker) reconcileCommit(hash string, version *gitVersion) error {
 	}
 
 	return nil
+}
+
+func parseTag(tag string) (*semver.Version, error) { // TODO: Support ignoring invalid semver tags
+	trimmedTag := strings.TrimPrefix(tag, "v")
+	version, err := semver.NewVersion(trimmedTag)
+	if err != nil {
+		return nil, err
+	}
+
+	return version, nil
 }

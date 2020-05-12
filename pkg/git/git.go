@@ -35,7 +35,7 @@ type gitVersion struct {
 func GetCurrentVersion(r *git.Repository, settings *Settings, branchSettings *BranchSettings, verbose bool) (version string, err error) {
 	tag, ok := os.LookupEnv("TRAVIS_TAG")
 	if !branchSettings.IgnoreEnvVars && ok && tag != "" { // If this is a tagged build in travis shortcircuit here
-		version, err := semver.NewVersion(tag)
+		version, err := parseTag(tag)
 		if err != nil {
 			return "", err
 		}
@@ -117,7 +117,7 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 
 	masterHead, err := r.Reference("refs/heads/master", false)
 	if err != nil {
-		masterHead, err = r.Reference("refs/remotes/origin/master", false)
+		masterHead, err = r.Reference("refs/remotes/origin/master", false) // TODO: This needs test coverage
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get master branch at 'refs/heads/master, 'refs/remotes/origin/master'")
 		}

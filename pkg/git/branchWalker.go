@@ -72,6 +72,7 @@ func (b *branchWalker) GetVersion() (*semver.Version, error) {
 	}
 
 	for ; index >= 0; index-- {
+		v := versionMap[index]
 		switch {
 		case v.MajorBump:
 			baseVersion.BumpMajor()
@@ -121,8 +122,7 @@ func (b *branchWalker) walkVersion(ref *object.Commit, version *versionHolder, t
 
 	tag, ok := b.tagMap[ref.Hash.String()]
 	if ok {
-		ft := strings.TrimPrefix(tag, "v")
-		tagVersion, err := semver.NewVersion(ft)
+		tagVersion, err := parseTag(tag)
 		if err != nil {
 			return err
 		}
@@ -189,27 +189,29 @@ func (b *branchWalker) checkWalkParent(ref *object.Commit, version *versionHolde
 }
 
 func (b *branchWalker) reconcileCommit(hash string, version *gitVersion) error {
-	versionMap := versionHolder{
-		versionMap: []*gitVersion{},
-	}
-
 	commit, err := b.repository.CommitObject(plumbing.NewHash(hash))
 	if err != nil {
 		return errors.Wrap(err, "failed to get commit in reconcile")
 	}
 
-	if commit.NumParents() <= 1 {
+	numParents := commit.NumParents()
+	if numParents <= 1 {
 		return nil
 	}
 
-	parentToWalk, err := commit.Parent(1)
-	if err != nil {
-		return errors.Wrap(err, "failed to get parent in reconcile")
+	versionMap := versionHolder{
+		versionMap: []*gitVersion{},
 	}
+	for i := 1; i < numParents; i++ {
+		parentToWalk, err := commit.Parent(i)
+		if err != nil {
+			return errors.Wrap(err, "failed to get parent in reconcile")
+		}
 
-	err = b.walkVersion(parentToWalk, &versionMap, true)
-	if err != nil {
-		return err
+		err = b.walkVersion(parentToWalk, &versionMap, true)
+		if err != nil {
+			return err
+		}
 	}
 
 	var hasMajor, hasMinor bool
@@ -231,4 +233,14 @@ func (b *branchWalker) reconcileCommit(hash string, version *gitVersion) error {
 	}
 
 	return nil
+}
+
+func parseTag(tag string) (*semver.Version, error) { // TODO: Support ignoring invalid semver tags
+	trimmedTag := strings.TrimPrefix(tag, "v")
+	version, err := semver.NewVersion(trimmedTag)
+	if err != nil {
+		return nil, err
+	}
+
+	return version, nil
 }

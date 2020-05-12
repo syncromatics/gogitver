@@ -2,7 +2,7 @@ package git_test
 
 import (
 	"fmt"
-	"path"
+	"os"
 	"testing"
 	"time"
 
@@ -18,192 +18,147 @@ import (
 	igit "github.com/syncromatics/gogitver/pkg/git"
 )
 
-func TestSimple(t *testing.T) {
-	fs := memfs.New()
-	storage := memory.NewStorage()
+func Test_ShouldCalculateVersionFromCommitsInMaster(t *testing.T) {
+	// Arrange
+	repository, worktree := initRepository(t)
 
-	r, err := git.Init(storage, fs)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	w, err := r.Worktree()
-	util.WriteFile(fs, "foo", []byte("foo"), 0644)
-
-	_, err = w.Add("foo")
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	_, err = w.Commit("foo\n", &git.CommitOptions{Author: defaultSignature()})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	util.WriteFile(fs, "foo2", []byte("foo"), 0644)
-
-	_, err = w.Add("foo2")
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	_, err = w.Commit("(+semver: breaking) This is a major commit\n", &git.CommitOptions{Author: defaultSignature()})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	_, err = w.Commit("(+semver: feature) This is a minor commit\n", &git.CommitOptions{Author: defaultSignature()})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	_, err = w.Commit("(+semver: fix) This is a patch commit\n", &git.CommitOptions{Author: defaultSignature()})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	s := igit.GetDefaultSettings()
-	version, err := igit.GetCurrentVersion(r, s, &igit.BranchSettings{
+	commitMultiple(t, worktree,
+		"(+semver: breaking) This is a major commit\n",
+		"(+semver: major) This is also a major commit\n",
+		"(+semver: feature) This is a minor commit\n",
+		"(+semver: minor) This is also a minor commit\n",
+		"(+semver: fix) This is a patch commit\n",
+		"(+semver: patch) This is also a patch commit\n",
+		"This is also a patch commit\n",
+	)
+	
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
 		IgnoreEnvVars: true,
-	}, false)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
 	}
 
-	assert.Equal(t, "1.1.1", version)
+	// Act
+	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
+	assert.Nil(t, err)
+
+	// Assert
+	assert.Equal(t, "2.2.3", version)
 }
 
-func TestBranch(t *testing.T) {
+func Test_ShouldCalculateVersionFromCommitsInBranch(t *testing.T) {
 	// Arrange
-	fs := memfs.New()
-	storage := memory.NewStorage()
+	repository, worktree := initRepository(t)
 
-	repository, err := git.Init(storage, fs)
-	assert.Nil(t, err)
+	commitMultiple(t, worktree, "Initial commit")
 
-	w, err := repository.Worktree()
-	util.WriteFile(fs, "foo", []byte("foo"), 0644)
-
-	_, err = w.Add("foo")
-	assert.Nil(t, err)
-
-	_, err = w.Commit("foo\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
-
-	util.WriteFile(fs, "foo2", []byte("foo"), 0644)
-
-	_, err = w.Add("foo2")
-	assert.Nil(t, err)
-
-	_, err = w.Commit("(+semver: breaking) This is a major commit\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
-
-	_, err = w.Commit("(+semver: feature) This is a minor commit\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
-
-	_, err = w.Commit("(+semver: fix) This is a patch commit\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
-
-	branch := plumbing.ReferenceName("refs/heads/not-master")
-	err = w.Checkout(&git.CheckoutOptions{
+	err := worktree.Checkout(&git.CheckoutOptions{
 		Create: true,
-		Branch: branch,
+		Branch: plumbing.ReferenceName("refs/heads/a-branch"),
 	})
 	assert.Nil(t, err)
-	
-	hash, err := w.Commit("(+semver: fix) This is a patch commit on not-master\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
+
+	hash := commitMultiple(t, worktree,
+		"(+semver: major)\n",
+		"(+semver: minor)\n",
+		"(+semver: patch)\n",
+		"some text\n",
+	)
 
 	settings := igit.GetDefaultSettings()
 	branchSettings := &igit.BranchSettings{
 		IgnoreEnvVars: true,
 	}
-	
+
 	// Act
 	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
 	assert.Nil(t, err)
 
 	// Assert
 	shortHash := hash.String()[0:4]
-	assert.Equal(t, fmt.Sprintf("1.1.2-not-master-0-%s", shortHash), version)
+	expected := fmt.Sprintf("1.1.1-a-branch-3-%s", shortHash)
+	assert.Equal(t, expected, version)
 }
 
-func TestMergeWithMajorChangeInBranch(t *testing.T) {
+func Test_ShouldCalculateVersionFromCommitsInMasterWithMergeCommits(t *testing.T) {
 	// Arrange
-	fs := memfs.New()
-	storage := memory.NewStorage()
+	repository, worktree := initRepository(t)
 
-	repository, err := git.Init(storage, fs)
-	assert.Nil(t, err)
+	masterHash := commitMultiple(t, worktree, "Initial commit")
 
-	w, err := repository.Worktree()
-	util.WriteFile(fs, "foo", []byte("foo"), 0644)
-
-	_, err = w.Add("foo")
-	assert.Nil(t, err)
-
-	_, err = w.Commit("foo\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
-
-	util.WriteFile(fs, "foo2", []byte("foo"), 0644)
-
-	_, err = w.Add("foo2")
-	assert.Nil(t, err)
-
-	_, err = w.Commit("(+semver: breaking) This is a major commit\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
-
-	_, err = w.Commit("(+semver: feature) This is a minor commit\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
-
-	masterHash, err := w.Commit("(+semver: fix) This is a patch commit\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
-
-	branch := plumbing.ReferenceName("refs/heads/not-master")
-	err = w.Checkout(&git.CheckoutOptions{
+	err := worktree.Checkout(&git.CheckoutOptions{
 		Create: true,
-		Branch: branch,
-		Hash: masterHash,
-	})
-	assert.Nil(t, err)
-	
-	_, err = w.Commit("(+semver: minor) This is a minor commit on not-master\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
-
-	branch1Hash, err := w.Commit("(+semver: patch) This is a patch commit on not-master\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
-
-	branch = plumbing.ReferenceName("refs/heads/also-not-master")
-	err = w.Checkout(&git.CheckoutOptions{
-		Create: true,
-		Branch: branch,
-		Hash: masterHash,
+		Branch: plumbing.ReferenceName("refs/heads/a-branch"),
 	})
 	assert.Nil(t, err)
 
-	branch2Hash, err := w.Commit("(+semver: major) This is a major commit on also-not-master\n", &git.CommitOptions{Author: defaultSignature()})
-	assert.Nil(t, err)
+	branchHash := commitMultiple(t, worktree,
+		"(+semver: major)\n",
+		"(+semver: minor)\n",
+		"(+semver: patch)\n",
+		"some text\n",
+	)
 
-	branch = plumbing.ReferenceName("refs/heads/master")
-	err = w.Checkout(&git.CheckoutOptions{
-		Branch: branch,
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.ReferenceName("refs/heads/master"),
 	})
 	assert.Nil(t, err)
 
-	_, err = w.Commit("Merge commit\n", &git.CommitOptions{
+	masterHash, err = worktree.Commit("merged a-branch\n", &git.CommitOptions{
 		Author: defaultSignature(),
 		Parents: []plumbing.Hash{
 			masterHash,
-			branch1Hash,
-			branch2Hash,
+			branchHash,
+		},
+	})
+	assert.Nil(t, err)
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: plumbing.ReferenceName("refs/heads/another-branch"),
+	})
+	assert.Nil(t, err)
+
+	branchHash = commitMultiple(t, worktree,
+		"(+semver: minor)\n",
+		"(+semver: patch)\n",
+	)
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.ReferenceName("refs/heads/master"),
+	})
+	assert.Nil(t, err)
+
+	masterHash, err = worktree.Commit("merged another-branch\n", &git.CommitOptions{
+		Author: defaultSignature(),
+		Parents: []plumbing.Hash{
+			masterHash,
+			branchHash,
+		},
+	})
+	assert.Nil(t, err)
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: plumbing.ReferenceName("refs/heads/yet-another-branch"),
+	})
+	assert.Nil(t, err)
+
+	branchHash = commitMultiple(t, worktree,
+		"(+semver: patch)\n",
+		"(+semver: patch)\n",
+		"(+semver: patch)\n",
+	)
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.ReferenceName("refs/heads/master"),
+	})
+	assert.Nil(t, err)
+
+	_, err = worktree.Commit("merged yet-another-branch\n", &git.CommitOptions{
+		Author: defaultSignature(),
+		Parents: []plumbing.Hash{
+			masterHash,
+			branchHash,
 		},
 	})
 	assert.Nil(t, err)
@@ -212,127 +167,153 @@ func TestMergeWithMajorChangeInBranch(t *testing.T) {
 	branchSettings := &igit.BranchSettings{
 		IgnoreEnvVars: true,
 	}
-	
+
 	// Act
 	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
 	assert.Nil(t, err)
 
 	// Assert
-	assert.Equal(t, "2.0.0", version)
+	assert.Equal(t, "1.1.1", version)
 }
 
-func TestUseLightweightTagForVersionAnchor(t *testing.T) {
+func Test_ShouldCalculateVersionFromLightweightTag(t *testing.T) {
+	// Arrange
+	repository, worktree := initRepository(t)
+
+	hash := commitMultiple(t, worktree,
+		"(+semver: breaking)\n",
+		"(+semver: breaking)\n",
+	)
+
+	ref := plumbing.NewHashReference(plumbing.ReferenceName("refs/tags/v1.2.3"), hash)
+	err := repository.Storer.SetReference(ref)
+	assert.Nil(t, err)
+
+	commitMultiple(t, worktree,
+		"(+semver: minor)\n",
+		"(+semver: patch)\n",
+	)	
+	
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+
+	// Act
+	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
+	assert.Nil(t, err)
+
+	// Assert
+	assert.Equal(t, "1.3.1", version)
+}
+
+func Test_ShouldFailToCalculateVersionFromImproperlyNamedLightweightTag(t *testing.T) { // TODO: Submit a PR that allows this condition to exist; ignore unparsable tags
+	// Arrange
+	repository, worktree := initRepository(t)
+
+	hash := commitMultiple(t, worktree, "Initial commit")
+
+	ref := plumbing.NewHashReference(plumbing.ReferenceName("refs/tags/an-arbitrary-tag-name"), hash)
+	err := repository.Storer.SetReference(ref)
+	assert.Nil(t, err)
+
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+
+	// Act
+	_, err = igit.GetCurrentVersion(repository, settings, branchSettings, false)
+
+	// Assert
+	assert.NotNil(t, err)
+}
+
+func Test_ShouldCalculateVersionFromAnnotatedTag(t *testing.T) {
+	// Arrange
+	repository, worktree := initRepository(t)
+
+	hash := commitMultiple(t, worktree,
+		"(+semver: breaking)\n",
+		"(+semver: breaking)\n",
+	)
+
+	commitObj, err := object.GetObject(repository.Storer, hash)
+	tag := object.Tag{
+		Name:       "5.6.7",
+		Message:    "not important",
+		TargetType: commitObj.Type(),
+		Target:     hash,
+	}
+	tagObj := repository.Storer.NewEncodedObject()
+	err = tag.Encode(tagObj)
+	assert.Nil(t, err)
+	
+	target, err := repository.Storer.SetEncodedObject(tagObj)
+	assert.Nil(t, err)
+
+	ref := plumbing.NewHashReference(plumbing.ReferenceName("refs/tags/5.6.7"), target)
+	err = repository.Storer.SetReference(ref)
+	assert.Nil(t, err)
+
+	commitMultiple(t, worktree,
+		"(+semver: minor)\n",
+		"(+semver: patch)\n",
+	)	
+	
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+
+	// Act
+	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
+	assert.Nil(t, err)
+
+	// Assert
+	assert.Equal(t, "5.7.1", version)
+}
+
+func Test_ShouldCalculateVersionFromTravisTag(t *testing.T) {
+	// Arrange
+	repository, worktree := initRepository(t)
+
+	commitMultiple(t, worktree, "Initial commit")
+
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{}
+	os.Setenv("TRAVIS_TAG", "v1.2.3")
+
+	// Act
+	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
+	assert.Nil(t, err)
+
+	// Assert
+	assert.Equal(t, "1.2.3", version)
+}
+
+func initRepository(t *testing.T) (*git.Repository, *git.Worktree) {
 	fs := memfs.New()
 	storage := memory.NewStorage()
 
-	r, err := git.Init(storage, fs)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	repository, err := git.Init(storage, fs)
+	assert.Nil(t, err)
 
-	w, err := r.Worktree()
-	util.WriteFile(fs, "foo", []byte("foo"), 0644)
+	worktree, err := repository.Worktree()
+	assert.Nil(t, err)
 
-	_, err = w.Add("foo")
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	hash, err := w.Commit("foo\n", &git.CommitOptions{Author: defaultSignature()})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	util.WriteFile(fs, "foo2", []byte("foo"), 0644)
-
-	_, err = w.Add("foo2")
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	hash, err = w.Commit("(+semver: major) This is a major commit\n", &git.CommitOptions{Author: defaultSignature()})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	_, err = createTag(r, hash, "1.5.0", false)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	s := igit.GetDefaultSettings()
-	version, err := igit.GetCurrentVersion(r, s, &igit.BranchSettings{
-		IgnoreEnvVars: true,
-	}, false)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	assert.Equal(t, "1.5.0", version)
+	return repository, worktree
 }
 
-func TestUseAnnotatedTagForVersionAnchor(t *testing.T) {
-	fs := memfs.New()
-	storage := memory.NewStorage()
-
-	r, err := git.Init(storage, fs)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
+func commitMultiple(t *testing.T, worktree *git.Worktree, messages ...string) plumbing.Hash {
+	var hash plumbing.Hash
+	var err error
+	for _, msg := range messages {
+		hash, err = worktree.Commit(msg, &git.CommitOptions{Author: defaultSignature()})
+		assert.Nil(t, err)
 	}
 
-	w, err := r.Worktree()
-	util.WriteFile(fs, "foo", []byte("foo"), 0644)
-
-	_, err = w.Add("foo")
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	hash, err := w.Commit("foo\n", &git.CommitOptions{Author: defaultSignature()})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	util.WriteFile(fs, "foo2", []byte("foo"), 0644)
-
-	_, err = w.Add("foo2")
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	hash, err = w.Commit("(+semver: major) This is a major commit\n", &git.CommitOptions{Author: defaultSignature()})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	_, err = createTag(r, hash, "1.5.0", true)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	s := igit.GetDefaultSettings()
-	version, err := igit.GetCurrentVersion(r, s, &igit.BranchSettings{
-		IgnoreEnvVars: true,
-	}, false)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	assert.Equal(t, "1.5.0", version)
+	return hash
 }
 
 func TestTrimBranchPrefix(t *testing.T) {
@@ -422,42 +403,4 @@ func defaultSignature() *object.Signature {
 		Email: "foo@foo.foo",
 		When:  when,
 	}
-}
-
-// this method will be available in go-git after 4.7.0
-func createTag(r *git.Repository, h plumbing.Hash, name string, annotated bool) (plumbing.Hash, error) {
-	rawobj, err := object.GetObject(r.Storer, h)
-	if err != nil {
-		return plumbing.ZeroHash, err
-	}
-
-	rname := plumbing.ReferenceName(path.Join("refs", "tags", name))
-
-	var target plumbing.Hash
-	if annotated {
-		tag := object.Tag{
-			Name:       name,
-			Message:    "",
-			TargetType: rawobj.Type(),
-			Target:     h,
-		}
-		obj := r.Storer.NewEncodedObject()
-		if err := tag.Encode(obj); err != nil {
-			return plumbing.ZeroHash, err
-		}
-
-		target, err = r.Storer.SetEncodedObject(obj)
-		if err := tag.Encode(obj); err != nil {
-			return plumbing.ZeroHash, err
-		}
-	} else {
-		target = h
-	}
-
-	ref := plumbing.NewHashReference(rname, target)
-	if err = r.Storer.SetReference(ref); err != nil {
-		return plumbing.ZeroHash, err
-	}
-
-	return ref.Hash(), nil
 }

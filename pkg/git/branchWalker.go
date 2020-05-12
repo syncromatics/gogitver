@@ -207,7 +207,7 @@ func (b *branchWalker) reconcileCommit(hash string, version *gitVersion) error {
 		if err != nil {
 			return errors.Wrap(err, "failed to get parent in reconcile")
 		}
-	
+
 		err = b.walkVersion(parentToWalk, &versionMap, true)
 		if err != nil {
 			return err

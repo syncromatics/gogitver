@@ -31,7 +31,7 @@ func Test_ShouldCalculateVersionFromCommitsInMaster(t *testing.T) {
 		"(+semver: patch) This is also a patch commit\n",
 		"This is also a patch commit\n",
 	)
-	
+
 	settings := igit.GetDefaultSettings()
 	branchSettings := &igit.BranchSettings{
 		IgnoreEnvVars: true,
@@ -192,8 +192,8 @@ func Test_ShouldCalculateVersionFromLightweightTag(t *testing.T) {
 	commitMultiple(t, worktree,
 		"(+semver: minor)\n",
 		"(+semver: patch)\n",
-	)	
-	
+	)
+
 	settings := igit.GetDefaultSettings()
 	branchSettings := &igit.BranchSettings{
 		IgnoreEnvVars: true,
@@ -248,7 +248,7 @@ func Test_ShouldCalculateVersionFromAnnotatedTag(t *testing.T) {
 	tagObj := repository.Storer.NewEncodedObject()
 	err = tag.Encode(tagObj)
 	assert.Nil(t, err)
-	
+
 	target, err := repository.Storer.SetEncodedObject(tagObj)
 	assert.Nil(t, err)
 
@@ -259,8 +259,8 @@ func Test_ShouldCalculateVersionFromAnnotatedTag(t *testing.T) {
 	commitMultiple(t, worktree,
 		"(+semver: minor)\n",
 		"(+semver: patch)\n",
-	)	
-	
+	)
+
 	settings := igit.GetDefaultSettings()
 	branchSettings := &igit.BranchSettings{
 		IgnoreEnvVars: true,

@@ -92,6 +92,11 @@ func getBoolFromFlag(cmd *cobra.Command, flagName string) bool {
 	return result
 }
 
+func isFlagChanged(cmd *cobra.Command, flagName string) bool {
+	flag := cmd.Flag(flagName)
+	return flag != nil && flag.Changed
+}
+
 func getBranchSettings(cmd *cobra.Command) *git.BranchSettings {
 	fbm := getBoolFromFlag(cmd, "forbid-behind-master")
 	fbp := getBoolFromFlag(cmd, "forbid-behind-primary")
@@ -117,6 +122,10 @@ func runRoot(cmd *cobra.Command, args []string) {
 	}
 
 	branchSettings := getBranchSettings(cmd)
+	if branchSettings.ForbidBehindMaster && isFlagChanged(cmd, "forbid-behind-master") {
+		fmt.Fprintln(os.Stderr, "warning: --forbid-behind-master is deprecated; use --forbid-behind-primary")
+	}
+
 	version, err := git.GetCurrentVersion(r, s, branchSettings, v)
 	if err != nil {
 		panic(err)
@@ -135,6 +144,11 @@ func runPrerelease(cmd *cobra.Command, args []string) {
 	}
 
 	primaryBranch, err := git.GetPrimaryBranchName(r, branchSettings)
+	if git.IsAmbiguousPrimaryBranchError(err) {
+		panic(err)
+	}
+	// The label command can still return the current branch label if the
+	// primary branch is missing; only ambiguous main/master detection is unsafe.
 	if err == nil && label == primaryBranch {
 		label = ""
 	}

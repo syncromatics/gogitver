@@ -1,6 +1,7 @@
 package git
 
 import (
+	stderrors "errors"
 	"fmt"
 	"log"
 	"os"
@@ -21,6 +22,21 @@ type BranchSettings struct {
 	TrimBranchPrefix    bool
 	IgnoreEnvVars       bool
 	PrimaryBranch       string
+}
+
+type ambiguousPrimaryBranchError struct {
+	message string
+}
+
+func (e *ambiguousPrimaryBranchError) Error() string {
+	return e.message
+}
+
+// IsAmbiguousPrimaryBranchError returns true when primary branch auto-detection
+// cannot safely choose between main and master.
+func IsAmbiguousPrimaryBranchError(err error) bool {
+	var target *ambiguousPrimaryBranchError
+	return stderrors.As(err, &target)
 }
 
 type gitVersion struct {
@@ -206,10 +222,16 @@ func getPrimaryBranchReference(r *git.Repository, branchSettings *BranchSettings
 		return ref, branchSettings.PrimaryBranch, nil
 	}
 
-	mainRef, hasMain := getOptionalReference(r, plumbing.NewBranchReferenceName("main"))
-	masterRef, hasMaster := getOptionalReference(r, plumbing.NewBranchReferenceName("master"))
+	mainRef, hasMain, err := getOptionalReference(r, plumbing.NewBranchReferenceName("main"))
+	if err != nil {
+		return nil, "", err
+	}
+	masterRef, hasMaster, err := getOptionalReference(r, plumbing.NewBranchReferenceName("master"))
+	if err != nil {
+		return nil, "", err
+	}
 	if hasMain && hasMaster {
-		return nil, "", errors.New("found both refs/heads/main and refs/heads/master; specify --primary-branch to choose the version baseline")
+		return nil, "", &ambiguousPrimaryBranchError{message: "found both refs/heads/main and refs/heads/master; specify --primary-branch to choose the version baseline"}
 	}
 	if hasMain {
 		return mainRef, "main", nil
@@ -218,10 +240,16 @@ func getPrimaryBranchReference(r *git.Repository, branchSettings *BranchSettings
 		return masterRef, "master", nil
 	}
 
-	originMainRef, hasOriginMain := getOptionalReference(r, plumbing.NewRemoteReferenceName("origin", "main"))
-	originMasterRef, hasOriginMaster := getOptionalReference(r, plumbing.NewRemoteReferenceName("origin", "master"))
+	originMainRef, hasOriginMain, err := getOptionalReference(r, plumbing.NewRemoteReferenceName("origin", "main"))
+	if err != nil {
+		return nil, "", err
+	}
+	originMasterRef, hasOriginMaster, err := getOptionalReference(r, plumbing.NewRemoteReferenceName("origin", "master"))
+	if err != nil {
+		return nil, "", err
+	}
 	if hasOriginMain && hasOriginMaster {
-		return nil, "", errors.New("found both refs/remotes/origin/main and refs/remotes/origin/master; specify --primary-branch to choose the version baseline")
+		return nil, "", &ambiguousPrimaryBranchError{message: "found both refs/remotes/origin/main and refs/remotes/origin/master; specify --primary-branch to choose the version baseline"}
 	}
 	if hasOriginMain {
 		return originMainRef, "main", nil
@@ -233,9 +261,16 @@ func getPrimaryBranchReference(r *git.Repository, branchSettings *BranchSettings
 	return nil, "", errors.New("failed to get primary branch at refs/heads/main, refs/heads/master, refs/remotes/origin/main, or refs/remotes/origin/master")
 }
 
-func getOptionalReference(r *git.Repository, referenceName plumbing.ReferenceName) (*plumbing.Reference, bool) {
+func getOptionalReference(r *git.Repository, referenceName plumbing.ReferenceName) (*plumbing.Reference, bool, error) {
 	ref, err := r.Reference(referenceName, false)
-	return ref, err == nil
+	if err == plumbing.ErrReferenceNotFound {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, errors.Wrapf(err, "failed to read reference '%s'", referenceName)
+	}
+
+	return ref, true, nil
 }
 
 func getBranchReference(r *git.Repository, branchName string) (*plumbing.Reference, error) {

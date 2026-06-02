@@ -173,6 +173,38 @@ func Test_ShouldUseOriginMainWhenLocalPrimaryBranchIsMissing(t *testing.T) {
 	assert.Equal(t, expected, version)
 }
 
+func Test_ShouldForbidBranchBehindPrimary(t *testing.T) {
+	// Arrange
+	repository := repositoryWithBranchBehindPrimary(t)
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		ForbidBehindPrimary: true,
+		IgnoreEnvVars:       true,
+	}
+
+	// Act
+	_, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
+
+	// Assert
+	require.ErrorContains(t, err, "whose version is less than primary branch")
+}
+
+func Test_ShouldForbidBranchBehindPrimaryWithMasterCompatibilityFlag(t *testing.T) {
+	// Arrange
+	repository := repositoryWithBranchBehindPrimary(t)
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		ForbidBehindMaster: true,
+		IgnoreEnvVars:      true,
+	}
+
+	// Act
+	_, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
+
+	// Assert
+	require.ErrorContains(t, err, "whose version is less than primary branch")
+}
+
 func Test_ShouldFailWhenOriginMainAndOriginMasterBothExistWithoutExplicitPrimaryBranch(t *testing.T) {
 	// Arrange
 	repository, worktree := initRepository(t)
@@ -487,6 +519,36 @@ func commitMerge(t *testing.T, worktree *git.Worktree, message string, parents .
 	})
 }
 
+func repositoryWithBranchBehindPrimary(t *testing.T) *git.Repository {
+	t.Helper()
+
+	repository, worktree := initRepository(t)
+
+	initialHash := commitMultiple(t, worktree, "Initial commit")
+	err := repository.Storer.SetReference(plumbing.NewHashReference(plumbing.ReferenceName("refs/tags/v0.0.1"), initialHash))
+	require.NoError(t, err)
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: plumbing.ReferenceName("refs/heads/a-branch"),
+	})
+	require.NoError(t, err)
+	commitMultiple(t, worktree, "branch work\n")
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.ReferenceName("refs/heads/master"),
+	})
+	require.NoError(t, err)
+	commitMultiple(t, worktree, "(+semver: minor) primary branch work\n")
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.ReferenceName("refs/heads/a-branch"),
+	})
+	require.NoError(t, err)
+
+	return repository
+}
+
 func TestTrimBranchPrefix(t *testing.T) {
 	r := getSingleBranchCommit("feature/should-be-trimmed", t)
 	s := igit.GetDefaultSettings()
@@ -519,6 +581,60 @@ func Test_ShouldResolveMainAsPrimaryBranchForLabelSuppression(t *testing.T) {
 	}
 
 	assert.Equal(t, "", label)
+}
+
+func Test_LabelSuppressionKeepsBranchLabelWhenPrimaryBranchMissing(t *testing.T) {
+	// Arrange: a lone feature branch with no main/master to act as a baseline.
+	r := getSingleBranchCommit("feature", t)
+	err := r.Storer.RemoveReference(plumbing.ReferenceName("refs/heads/master"))
+	require.NoError(t, err)
+
+	s := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+
+	label, err := igit.GetPrereleaseLabel(r, s, branchSettings)
+	require.NoError(t, err)
+
+	// Act: this mirrors the prerelease command's suppression logic.
+	primaryBranch, err := igit.GetPrimaryBranchName(r, branchSettings)
+
+	// Assert: a missing primary branch is an ordinary (non-ambiguous) error, so
+	// the command continues and the branch label is preserved rather than blanked.
+	require.Error(t, err)
+	require.False(t, igit.IsAmbiguousPrimaryBranchError(err))
+	if err == nil && label == primaryBranch {
+		label = ""
+	}
+	assert.Equal(t, "feature", label)
+}
+
+func Test_LabelSuppressionDetectsAmbiguousPrimaryBranch(t *testing.T) {
+	// Arrange: both main and master exist, so the baseline is ambiguous.
+	r := getSingleBranchCommit("main", t)
+
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+
+	// Act
+	_, err := igit.GetPrimaryBranchName(r, branchSettings)
+
+	// Assert: the prerelease command treats this as fatal (it panics) rather than
+	// silently suppressing the label.
+	require.Error(t, err)
+	assert.True(t, igit.IsAmbiguousPrimaryBranchError(err))
+}
+
+func Test_IsAmbiguousPrimaryBranchErrorUnwrapsWrappedErrors(t *testing.T) {
+	r := getSingleBranchCommit("main", t)
+
+	_, err := igit.GetPrimaryBranchName(r, &igit.BranchSettings{IgnoreEnvVars: true})
+	require.Error(t, err)
+
+	wrapped := fmt.Errorf("getVersion failed: %w", err)
+	assert.True(t, igit.IsAmbiguousPrimaryBranchError(wrapped))
 }
 
 func TestCleanseBranchName(t *testing.T) {

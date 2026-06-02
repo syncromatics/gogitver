@@ -8,17 +8,19 @@ import (
 	"strings"
 
 	"github.com/coreos/go-semver/semver"
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/pkg/errors"
-	git "gopkg.in/src-d/go-git.v4"
-	"gopkg.in/src-d/go-git.v4/plumbing"
-	"gopkg.in/src-d/go-git.v4/plumbing/object"
 )
 
 // BranchSettings contains flags that determine how branches are handled when calculating versions.
 type BranchSettings struct {
-	ForbidBehindMaster bool
-	TrimBranchPrefix   bool
-	IgnoreEnvVars      bool
+	ForbidBehindMaster  bool
+	ForbidBehindPrimary bool
+	TrimBranchPrefix    bool
+	IgnoreEnvVars       bool
+	PrimaryBranch       string
 }
 
 type gitVersion struct {
@@ -106,6 +108,12 @@ func GetPrereleaseLabel(r *git.Repository, settings *Settings, branchSettings *B
 	return getCurrentBranch(r, h, branchSettings)
 }
 
+// GetPrimaryBranchName returns the branch name used as the stable version baseline.
+func GetPrimaryBranchName(r *git.Repository, branchSettings *BranchSettings) (string, error) {
+	_, name, err := getPrimaryBranchReference(r, branchSettings)
+	return name, err
+}
+
 func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]string, branchSettings *BranchSettings, settings *Settings, verbose bool) (version *semver.Version, err error) {
 	currentBranch, err := getCurrentBranch(r, h, branchSettings)
 	if err != nil {
@@ -115,27 +123,27 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 		log.Printf("Current branch is %s", currentBranch)
 	}
 
-	masterHead, err := r.Reference("refs/heads/master", false)
+	primaryHead, primaryBranch, err := getPrimaryBranchReference(r, branchSettings)
 	if err != nil {
-		masterHead, err = r.Reference("refs/remotes/origin/master", false) // TODO: This needs test coverage
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to get master branch at 'refs/heads/master, 'refs/remotes/origin/master'")
-		}
+		return nil, err
+	}
+	if verbose {
+		log.Printf("Primary branch is %s", primaryBranch)
 	}
 
-	masterCommit, err := r.CommitObject(masterHead.Hash())
+	primaryCommit, err := r.CommitObject(primaryHead.Hash())
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get master commit from reference")
+		return nil, errors.Wrap(err, "failed to get primary branch commit from reference")
 	}
 
-	masterWalker := newBranchWalker(r, masterCommit, tagMap, settings, true, "", verbose)
-	masterVersion, err := masterWalker.GetVersion()
+	primaryWalker := newBranchWalker(r, primaryCommit, tagMap, settings, true, "", verbose)
+	primaryVersion, err := primaryWalker.GetVersion()
 	if err != nil {
 		return nil, err
 	}
 
-	if h.Hash() == masterHead.Hash() {
-		return masterVersion, nil
+	if h.Hash() == primaryHead.Hash() {
+		return primaryVersion, nil
 	}
 
 	c, err := r.CommitObject(h.Hash())
@@ -143,7 +151,7 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 		return nil, errors.Wrap(err, "getVersion failed")
 	}
 
-	walker := newBranchWalker(r, c, tagMap, settings, false, masterHead.Hash().String(), verbose)
+	walker := newBranchWalker(r, c, tagMap, settings, false, primaryHead.Hash().String(), verbose)
 	versionMap, err := walker.GetVersionMap()
 	if err != nil {
 		return nil, err
@@ -159,7 +167,7 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 		baseVersion = versionMap[index].Name
 		index--
 	} else {
-		baseVersion = masterVersion
+		baseVersion = primaryVersion
 	}
 
 	if index < 0 {
@@ -182,11 +190,51 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 	prerelease := fmt.Sprintf("%s-%d-%s", currentBranch, len(versionMap)-1, shortHash)
 	baseVersion.PreRelease = semver.PreRelease(prerelease)
 
-	if branchSettings.ForbidBehindMaster && baseVersion.LessThan(*masterVersion) {
-		return nil, errors.Errorf("Branch has calculated version '%s' whose version is less than master '%s'", baseVersion, masterVersion)
+	if (branchSettings.ForbidBehindPrimary || branchSettings.ForbidBehindMaster) && baseVersion.LessThan(*primaryVersion) {
+		return nil, errors.Errorf("Branch has calculated version '%s' whose version is less than primary branch '%s'", baseVersion, primaryVersion)
 	}
 
 	return baseVersion, nil
+}
+
+func getPrimaryBranchReference(r *git.Repository, branchSettings *BranchSettings) (*plumbing.Reference, string, error) {
+	if branchSettings.PrimaryBranch != "" {
+		ref, err := getBranchReference(r, branchSettings.PrimaryBranch)
+		if err != nil {
+			return nil, "", errors.Wrapf(err, "failed to get primary branch '%s'", branchSettings.PrimaryBranch)
+		}
+		return ref, branchSettings.PrimaryBranch, nil
+	}
+
+	for _, name := range []string{"main", "master"} {
+		ref, err := r.Reference(plumbing.NewBranchReferenceName(name), false)
+		if err == nil {
+			return ref, name, nil
+		}
+	}
+
+	for _, name := range []string{"main", "master"} {
+		ref, err := r.Reference(plumbing.NewRemoteReferenceName("origin", name), false)
+		if err == nil {
+			return ref, name, nil
+		}
+	}
+
+	return nil, "", errors.New("failed to get primary branch at refs/heads/main, refs/heads/master, refs/remotes/origin/main, or refs/remotes/origin/master")
+}
+
+func getBranchReference(r *git.Repository, branchName string) (*plumbing.Reference, error) {
+	ref, err := r.Reference(plumbing.NewBranchReferenceName(branchName), false)
+	if err == nil {
+		return ref, nil
+	}
+
+	ref, err = r.Reference(plumbing.NewRemoteReferenceName("origin", branchName), false)
+	if err == nil {
+		return ref, nil
+	}
+
+	return nil, err
 }
 
 func getCurrentBranch(r *git.Repository, h *plumbing.Reference, branchSettings *BranchSettings) (name string, err error) {

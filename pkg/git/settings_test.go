@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/syncromatics/gogitver/pkg/git"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/syncromatics/gogitver/pkg/git"
 )
 
 func TestSettingsParse(t *testing.T) {
@@ -19,10 +20,7 @@ patch-version-bump-message: '\+semver:\s?(fix|patch)'
 	r := bytes.NewReader(b)
 
 	s, err := git.GetSettingsFromFile(r)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	assert.Equal(t, "\\+semver:\\s?(breaking|major)", s.MajorPattern)
 

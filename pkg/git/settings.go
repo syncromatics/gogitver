@@ -2,10 +2,9 @@ package git
 
 import (
 	"io"
-	"io/ioutil"
 
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // Settings provides the regex patterns used for version bumping
@@ -19,7 +18,7 @@ type Settings struct {
 func GetSettingsFromFile(file io.Reader) (*Settings, error) {
 	s := Settings{}
 
-	fileBytes, err := ioutil.ReadAll(file)
+	fileBytes, err := io.ReadAll(file)
 	if err != nil {
 		return nil, errors.Wrap(err, "read bytes from file failed")
 	}

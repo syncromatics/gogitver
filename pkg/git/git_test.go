@@ -2,18 +2,18 @@ package git_test
 
 import (
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
-	"gopkg.in/src-d/go-billy.v4/memfs"
-	"gopkg.in/src-d/go-billy.v4/util"
-	git "gopkg.in/src-d/go-git.v4"
-	"gopkg.in/src-d/go-git.v4/plumbing"
-	"gopkg.in/src-d/go-git.v4/plumbing/object"
-	"gopkg.in/src-d/go-git.v4/storage/memory"
+	"github.com/go-git/go-billy/v5/memfs"
+	"github.com/go-git/go-billy/v5/util"
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/storage/memory"
 
 	igit "github.com/syncromatics/gogitver/pkg/git"
 )
@@ -39,10 +39,172 @@ func Test_ShouldCalculateVersionFromCommitsInMaster(t *testing.T) {
 
 	// Act
 	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	// Assert
 	assert.Equal(t, "2.2.3", version)
+}
+
+func Test_ShouldCalculateVersionFromCommitsInMain(t *testing.T) {
+	// Arrange
+	repository, worktree := initRepository(t)
+
+	commitMultiple(t, worktree, "Initial commit")
+
+	err := worktree.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: plumbing.ReferenceName("refs/heads/main"),
+	})
+	require.NoError(t, err)
+
+	err = repository.Storer.RemoveReference(plumbing.ReferenceName("refs/heads/master"))
+	require.NoError(t, err)
+
+	commitMultiple(t, worktree,
+		"(+semver: breaking) This is a major commit\n",
+		"(+semver: minor) This is a minor commit\n",
+		"(+semver: patch) This is a patch commit\n",
+	)
+
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+
+	// Act
+	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
+	require.NoError(t, err)
+
+	// Assert
+	assert.Equal(t, "1.1.1", version)
+}
+
+func Test_ShouldFailWhenMainAndMasterBothExistWithoutExplicitPrimaryBranch(t *testing.T) {
+	// Arrange
+	repository, worktree := initRepository(t)
+
+	commitMultiple(t, worktree, "Initial commit")
+
+	err := worktree.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: plumbing.ReferenceName("refs/heads/main"),
+	})
+	require.NoError(t, err)
+
+	commitMultiple(t, worktree, "(+semver: minor) main branch commit\n")
+
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+
+	// Act
+	_, err = igit.GetCurrentVersion(repository, settings, branchSettings, false)
+
+	// Assert
+	require.ErrorContains(t, err, "found both refs/heads/main and refs/heads/master")
+}
+
+func Test_ShouldUseExplicitPrimaryBranch(t *testing.T) {
+	// Arrange
+	repository, worktree := initRepository(t)
+
+	commitMultiple(t, worktree, "Initial commit")
+
+	err := worktree.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: plumbing.ReferenceName("refs/heads/main"),
+	})
+	require.NoError(t, err)
+
+	commitMultiple(t, worktree, "(+semver: major) main branch commit\n")
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.ReferenceName("refs/heads/master"),
+	})
+	require.NoError(t, err)
+
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+		PrimaryBranch: "master",
+	}
+
+	// Act
+	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
+	require.NoError(t, err)
+
+	// Assert
+	assert.Equal(t, "0.0.1", version)
+}
+
+func Test_ShouldUseOriginMainWhenLocalPrimaryBranchIsMissing(t *testing.T) {
+	// Arrange
+	repository, worktree := initRepository(t)
+
+	primaryHash := commitMultiple(t, worktree, "Initial commit")
+
+	err := repository.Storer.SetReference(plumbing.NewHashReference(plumbing.ReferenceName("refs/remotes/origin/main"), primaryHash))
+	require.NoError(t, err)
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: plumbing.ReferenceName("refs/heads/a-branch"),
+	})
+	require.NoError(t, err)
+
+	hash := commitMultiple(t, worktree, "(+semver: patch) branch commit\n")
+
+	err = repository.Storer.RemoveReference(plumbing.ReferenceName("refs/heads/master"))
+	require.NoError(t, err)
+
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+
+	// Act
+	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
+	require.NoError(t, err)
+
+	// Assert
+	shortHash := hash.String()[0:4]
+	expected := fmt.Sprintf("0.0.2-a-branch-0-%s", shortHash)
+	assert.Equal(t, expected, version)
+}
+
+func Test_ShouldFailWhenOriginMainAndOriginMasterBothExistWithoutExplicitPrimaryBranch(t *testing.T) {
+	// Arrange
+	repository, worktree := initRepository(t)
+
+	primaryHash := commitMultiple(t, worktree, "Initial commit")
+
+	err := repository.Storer.SetReference(plumbing.NewHashReference(plumbing.ReferenceName("refs/remotes/origin/main"), primaryHash))
+	require.NoError(t, err)
+	err = repository.Storer.SetReference(plumbing.NewHashReference(plumbing.ReferenceName("refs/remotes/origin/master"), primaryHash))
+	require.NoError(t, err)
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: plumbing.ReferenceName("refs/heads/a-branch"),
+	})
+	require.NoError(t, err)
+
+	commitMultiple(t, worktree, "(+semver: patch) branch commit\n")
+
+	err = repository.Storer.RemoveReference(plumbing.ReferenceName("refs/heads/master"))
+	require.NoError(t, err)
+
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+
+	// Act
+	_, err = igit.GetCurrentVersion(repository, settings, branchSettings, false)
+
+	// Assert
+	require.ErrorContains(t, err, "found both refs/remotes/origin/main and refs/remotes/origin/master")
 }
 
 func Test_ShouldCalculateVersionFromCommitsInBranch(t *testing.T) {
@@ -55,7 +217,7 @@ func Test_ShouldCalculateVersionFromCommitsInBranch(t *testing.T) {
 		Create: true,
 		Branch: plumbing.ReferenceName("refs/heads/a-branch"),
 	})
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	hash := commitMultiple(t, worktree,
 		"(+semver: major)\n",
@@ -71,7 +233,7 @@ func Test_ShouldCalculateVersionFromCommitsInBranch(t *testing.T) {
 
 	// Act
 	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	// Assert
 	shortHash := hash.String()[0:4]
@@ -89,7 +251,7 @@ func Test_ShouldCalculateVersionFromCommitsInMasterWithMergeCommits(t *testing.T
 		Create: true,
 		Branch: plumbing.ReferenceName("refs/heads/a-branch"),
 	})
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	branchHash := commitMultiple(t, worktree,
 		"(+semver: major)\n",
@@ -101,22 +263,16 @@ func Test_ShouldCalculateVersionFromCommitsInMasterWithMergeCommits(t *testing.T
 	err = worktree.Checkout(&git.CheckoutOptions{
 		Branch: plumbing.ReferenceName("refs/heads/master"),
 	})
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
-	masterHash, err = worktree.Commit("merged a-branch\n", &git.CommitOptions{
-		Author: defaultSignature(),
-		Parents: []plumbing.Hash{
-			masterHash,
-			branchHash,
-		},
-	})
-	assert.Nil(t, err)
+	masterHash, err = commitMerge(t, worktree, "merged a-branch\n", masterHash, branchHash)
+	require.NoError(t, err)
 
 	err = worktree.Checkout(&git.CheckoutOptions{
 		Create: true,
 		Branch: plumbing.ReferenceName("refs/heads/another-branch"),
 	})
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	branchHash = commitMultiple(t, worktree,
 		"(+semver: minor)\n",
@@ -126,22 +282,16 @@ func Test_ShouldCalculateVersionFromCommitsInMasterWithMergeCommits(t *testing.T
 	err = worktree.Checkout(&git.CheckoutOptions{
 		Branch: plumbing.ReferenceName("refs/heads/master"),
 	})
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
-	masterHash, err = worktree.Commit("merged another-branch\n", &git.CommitOptions{
-		Author: defaultSignature(),
-		Parents: []plumbing.Hash{
-			masterHash,
-			branchHash,
-		},
-	})
-	assert.Nil(t, err)
+	masterHash, err = commitMerge(t, worktree, "merged another-branch\n", masterHash, branchHash)
+	require.NoError(t, err)
 
 	err = worktree.Checkout(&git.CheckoutOptions{
 		Create: true,
 		Branch: plumbing.ReferenceName("refs/heads/yet-another-branch"),
 	})
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	branchHash = commitMultiple(t, worktree,
 		"(+semver: patch)\n",
@@ -152,16 +302,10 @@ func Test_ShouldCalculateVersionFromCommitsInMasterWithMergeCommits(t *testing.T
 	err = worktree.Checkout(&git.CheckoutOptions{
 		Branch: plumbing.ReferenceName("refs/heads/master"),
 	})
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
-	_, err = worktree.Commit("merged yet-another-branch\n", &git.CommitOptions{
-		Author: defaultSignature(),
-		Parents: []plumbing.Hash{
-			masterHash,
-			branchHash,
-		},
-	})
-	assert.Nil(t, err)
+	_, err = commitMerge(t, worktree, "merged yet-another-branch\n", masterHash, branchHash)
+	require.NoError(t, err)
 
 	settings := igit.GetDefaultSettings()
 	branchSettings := &igit.BranchSettings{
@@ -170,7 +314,7 @@ func Test_ShouldCalculateVersionFromCommitsInMasterWithMergeCommits(t *testing.T
 
 	// Act
 	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	// Assert
 	assert.Equal(t, "1.1.1", version)
@@ -187,7 +331,7 @@ func Test_ShouldCalculateVersionFromLightweightTag(t *testing.T) {
 
 	ref := plumbing.NewHashReference(plumbing.ReferenceName("refs/tags/v1.2.3"), hash)
 	err := repository.Storer.SetReference(ref)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	commitMultiple(t, worktree,
 		"(+semver: minor)\n",
@@ -201,7 +345,7 @@ func Test_ShouldCalculateVersionFromLightweightTag(t *testing.T) {
 
 	// Act
 	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	// Assert
 	assert.Equal(t, "1.3.1", version)
@@ -215,7 +359,7 @@ func Test_ShouldFailToCalculateVersionFromImproperlyNamedLightweightTag(t *testi
 
 	ref := plumbing.NewHashReference(plumbing.ReferenceName("refs/tags/an-arbitrary-tag-name"), hash)
 	err := repository.Storer.SetReference(ref)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	settings := igit.GetDefaultSettings()
 	branchSettings := &igit.BranchSettings{
@@ -226,7 +370,7 @@ func Test_ShouldFailToCalculateVersionFromImproperlyNamedLightweightTag(t *testi
 	_, err = igit.GetCurrentVersion(repository, settings, branchSettings, false)
 
 	// Assert
-	assert.NotNil(t, err)
+	require.Error(t, err)
 }
 
 func Test_ShouldCalculateVersionFromAnnotatedTag(t *testing.T) {
@@ -247,14 +391,14 @@ func Test_ShouldCalculateVersionFromAnnotatedTag(t *testing.T) {
 	}
 	tagObj := repository.Storer.NewEncodedObject()
 	err = tag.Encode(tagObj)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	target, err := repository.Storer.SetEncodedObject(tagObj)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	ref := plumbing.NewHashReference(plumbing.ReferenceName("refs/tags/5.6.7"), target)
 	err = repository.Storer.SetReference(ref)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	commitMultiple(t, worktree,
 		"(+semver: minor)\n",
@@ -268,7 +412,7 @@ func Test_ShouldCalculateVersionFromAnnotatedTag(t *testing.T) {
 
 	// Act
 	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	// Assert
 	assert.Equal(t, "5.7.1", version)
@@ -282,38 +426,65 @@ func Test_ShouldCalculateVersionFromTravisTag(t *testing.T) {
 
 	settings := igit.GetDefaultSettings()
 	branchSettings := &igit.BranchSettings{}
-	os.Setenv("TRAVIS_TAG", "v1.2.3")
+	t.Setenv("TRAVIS_TAG", "v1.2.3")
 
 	// Act
 	version, err := igit.GetCurrentVersion(repository, settings, branchSettings, false)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	// Assert
 	assert.Equal(t, "1.2.3", version)
 }
 
 func initRepository(t *testing.T) (*git.Repository, *git.Worktree) {
+	t.Helper()
+
 	fs := memfs.New()
 	storage := memory.NewStorage()
 
 	repository, err := git.Init(storage, fs)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	worktree, err := repository.Worktree()
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	return repository, worktree
 }
 
 func commitMultiple(t *testing.T, worktree *git.Worktree, messages ...string) plumbing.Hash {
+	t.Helper()
+
 	var hash plumbing.Hash
 	var err error
-	for _, msg := range messages {
+	for i, msg := range messages {
+		fileName := fmt.Sprintf("commit-%d-%d.txt", time.Now().UnixNano(), i)
+		err = util.WriteFile(worktree.Filesystem, fileName, []byte(msg), 0644)
+		require.NoError(t, err)
+
+		_, err = worktree.Add(fileName)
+		require.NoError(t, err)
+
 		hash, err = worktree.Commit(msg, &git.CommitOptions{Author: defaultSignature()})
-		assert.Nil(t, err)
+		require.NoError(t, err)
 	}
 
 	return hash
+}
+
+func commitMerge(t *testing.T, worktree *git.Worktree, message string, parents ...plumbing.Hash) (plumbing.Hash, error) {
+	t.Helper()
+
+	fileName := fmt.Sprintf("merge-%d.txt", time.Now().UnixNano())
+	err := util.WriteFile(worktree.Filesystem, fileName, []byte(message), 0644)
+	require.NoError(t, err)
+
+	_, err = worktree.Add(fileName)
+	require.NoError(t, err)
+
+	return worktree.Commit(message, &git.CommitOptions{
+		Author:  defaultSignature(),
+		Parents: parents,
+	})
 }
 
 func TestTrimBranchPrefix(t *testing.T) {
@@ -323,12 +494,31 @@ func TestTrimBranchPrefix(t *testing.T) {
 		IgnoreEnvVars:    true,
 		TrimBranchPrefix: true,
 	})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	assert.Equal(t, "should-be-trimmed", label)
+}
+
+func Test_ShouldResolveMainAsPrimaryBranchForLabelSuppression(t *testing.T) {
+	r := getSingleBranchCommit("main", t)
+	err := r.Storer.RemoveReference(plumbing.ReferenceName("refs/heads/master"))
+	require.NoError(t, err)
+
+	s := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+
+	label, err := igit.GetPrereleaseLabel(r, s, branchSettings)
+	require.NoError(t, err)
+
+	primaryBranch, err := igit.GetPrimaryBranchName(r, branchSettings)
+	require.NoError(t, err)
+	if label == primaryBranch {
+		label = ""
+	}
+
+	assert.Equal(t, "", label)
 }
 
 func TestCleanseBranchName(t *testing.T) {
@@ -337,61 +527,45 @@ func TestCleanseBranchName(t *testing.T) {
 	label, err := igit.GetPrereleaseLabel(r, s, &igit.BranchSettings{
 		IgnoreEnvVars: true,
 	})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	assert.Equal(t, "author-s-branch", label)
 }
 
 func getSingleBranchCommit(branchName string, t *testing.T) *git.Repository {
+	t.Helper()
+
 	fs := memfs.New()
 	storage := memory.NewStorage()
 
 	r, err := git.Init(storage, fs)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	w, err := r.Worktree()
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
-	util.WriteFile(fs, "foo", []byte("foo"), 0644)
+	err = util.WriteFile(fs, "foo", []byte("foo"), 0644)
+	require.NoError(t, err)
 	_, err = w.Add("foo")
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	require.NoError(t, err)
 	_, err = w.Commit("foo\n", &git.CommitOptions{Author: defaultSignature()})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	ref := fmt.Sprintf("refs/heads/%s", branchName)
 	b := plumbing.ReferenceName(ref)
-	w.Checkout(&git.CheckoutOptions{
+	err = w.Checkout(&git.CheckoutOptions{
 		Create: true,
 		Force:  false,
 		Branch: b,
 	})
+	require.NoError(t, err)
 
-	util.WriteFile(fs, "foo2", []byte("foo"), 0644)
+	err = util.WriteFile(fs, "foo2", []byte("foo"), 0644)
+	require.NoError(t, err)
 	_, err = w.Add("foo2")
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	require.NoError(t, err)
 	_, err = w.Commit("(+semver: major) This is a major commit\n", &git.CommitOptions{Author: defaultSignature()})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
 	return r
 }

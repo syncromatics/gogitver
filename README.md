@@ -6,12 +6,29 @@ gogitver is a tool to determine the semantic version of a project based on keywo
 
 ### Installing
 
-#### Snap
-```snap install gogitver```
+#### Go install
+
+If you have Go installed, install the latest tagged release directly from GitHub:
+
+```sh
+go install github.com/syncromatics/gogitver/cmd/gogitver@latest
+```
+
+For a reproducible install, use a specific version tag:
+
+```sh
+go install github.com/syncromatics/gogitver/cmd/gogitver@v1.2.0
+```
+
+Make sure Go's binary directory is on your `PATH`. This is usually `$GOPATH/bin`, or `$HOME/go/bin` when `GOPATH` is not set.
 
 #### Binaries
 
 To install download the latest release from the [releases](https://github.com/syncromatics/gogitver/releases) page for your machine architecture and place the binary in your path. You can then run the executable while in the path of your project and it should output the current version. You can then use this version to tag container images, helm charts, etc.
+
+#### Snap
+
+The Snap package is outdated and should be avoided for new installs. New versions are not currently published to Snap.
 
 ### Usage
 
@@ -36,13 +53,27 @@ minor-version-bump-message: '(feat|feature|minor)\(.*\)'
 patch-version-bump-message: '(patch|fix)\(.*\)'
 ```
 
-You can also override the name and location of this file by providing the settings flag ```gotgitver --settings=./anotherfile.yaml```
+You can also override the name and location of this file by providing the settings flag ```gogitver --settings=./anotherfile.yaml```
+
+### Primary branch
+
+gogitver uses the repository's primary branch as the stable version baseline. By default it looks for `main`, `master`, `origin/main`, then `origin/master`.
+
+If both `main` and `master` exist, gogitver requires an explicit primary branch so it does not silently switch the version baseline.
+
+You can override this with:
+
+```sh
+gogitver --primary-branch=main
+```
+
+Use `--forbid-behind-primary` to error when the current branch calculates a version lower than the resolved primary branch. The older `--forbid-behind-master` flag remains available as a deprecated compatibility alias.
 
 ## Development
 
 ### Requirements
 
-This project requires at least [Go](https://golang.org/dl/) 1.11 because it makes use of go modules for dependencies. 
+This project requires [Go](https://golang.org/dl/) 1.26.3.
 
 ### Building
 
@@ -50,7 +81,7 @@ To build the project simply run ```make build``` which will generate the binarie
 
 ## Built With
 
-* [go-git](https://github.com/src-d/go-git) - The git interface
+* [go-git](https://github.com/go-git/go-git) - The git interface
 
 ## License
 
@@ -58,6 +89,6 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Acknowledgments
 
-* [go-git](https://github.com/src-d/go-git) for allowing interactions with git to be easy and without dependencies
+* [go-git](https://github.com/go-git/go-git) for allowing interactions with git to be easy and without dependencies
 * [GitVersion](https://github.com/GitTools/GitVersion) for the inspiration
 * [Visual Studio Code](https://code.visualstudio.com/) for just being an all around great editor

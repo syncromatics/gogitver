@@ -206,21 +206,36 @@ func getPrimaryBranchReference(r *git.Repository, branchSettings *BranchSettings
 		return ref, branchSettings.PrimaryBranch, nil
 	}
 
-	for _, name := range []string{"main", "master"} {
-		ref, err := r.Reference(plumbing.NewBranchReferenceName(name), false)
-		if err == nil {
-			return ref, name, nil
-		}
+	mainRef, hasMain := getOptionalReference(r, plumbing.NewBranchReferenceName("main"))
+	masterRef, hasMaster := getOptionalReference(r, plumbing.NewBranchReferenceName("master"))
+	if hasMain && hasMaster {
+		return nil, "", errors.New("found both refs/heads/main and refs/heads/master; specify --primary-branch to choose the version baseline")
+	}
+	if hasMain {
+		return mainRef, "main", nil
+	}
+	if hasMaster {
+		return masterRef, "master", nil
 	}
 
-	for _, name := range []string{"main", "master"} {
-		ref, err := r.Reference(plumbing.NewRemoteReferenceName("origin", name), false)
-		if err == nil {
-			return ref, name, nil
-		}
+	originMainRef, hasOriginMain := getOptionalReference(r, plumbing.NewRemoteReferenceName("origin", "main"))
+	originMasterRef, hasOriginMaster := getOptionalReference(r, plumbing.NewRemoteReferenceName("origin", "master"))
+	if hasOriginMain && hasOriginMaster {
+		return nil, "", errors.New("found both refs/remotes/origin/main and refs/remotes/origin/master; specify --primary-branch to choose the version baseline")
+	}
+	if hasOriginMain {
+		return originMainRef, "main", nil
+	}
+	if hasOriginMaster {
+		return originMasterRef, "master", nil
 	}
 
 	return nil, "", errors.New("failed to get primary branch at refs/heads/main, refs/heads/master, refs/remotes/origin/main, or refs/remotes/origin/master")
+}
+
+func getOptionalReference(r *git.Repository, referenceName plumbing.ReferenceName) (*plumbing.Reference, bool) {
+	ref, err := r.Reference(referenceName, false)
+	return ref, err == nil
 }
 
 func getBranchReference(r *git.Repository, branchName string) (*plumbing.Reference, error) {

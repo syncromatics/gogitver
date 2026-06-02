@@ -57,15 +57,15 @@ You can also override the name and location of this file by providing the settin
 
 ### Primary branch
 
-gogitver uses the repository's primary branch as the stable version baseline. By default it looks for `main`, `master`, `origin/main`, then `origin/master`.
+gogitver uses the repository's primary branch as the stable version baseline. By default it looks for `main`, `master`, `origin/main`, then `origin/master`. For a single branch name, a local ref is preferred over its remote counterpart (a local `main` is used before `origin/main`).
 
-If both `main` and `master` exist, gogitver requires an explicit primary branch so it does not silently switch the version baseline.
-
-You can override this with:
+If both a `main` and a `master` branch exist anywhere — local or remote, in any combination — gogitver refuses to guess the version baseline and requires an explicit primary branch. This prevents it from silently switching the baseline during a branch migration:
 
 ```sh
 gogitver --primary-branch=main
 ```
+
+The `--primary-branch` value also takes a local ref or `origin/<name>`, so you can point the baseline at any branch, not just `main` or `master`.
 
 Use `--forbid-behind-primary` to error when the current branch calculates a version lower than the resolved primary branch. The older `--forbid-behind-master` flag remains available as a deprecated compatibility alias.
 

@@ -102,7 +102,7 @@ func Test_ShouldFailWhenMainAndMasterBothExistWithoutExplicitPrimaryBranch(t *te
 	_, err = igit.GetCurrentVersion(repository, settings, branchSettings, false)
 
 	// Assert
-	require.ErrorContains(t, err, "found both refs/heads/main and refs/heads/master")
+	require.ErrorContains(t, err, "found both 'main' and 'master' branches")
 }
 
 func Test_ShouldUseExplicitPrimaryBranch(t *testing.T) {
@@ -236,7 +236,37 @@ func Test_ShouldFailWhenOriginMainAndOriginMasterBothExistWithoutExplicitPrimary
 	_, err = igit.GetCurrentVersion(repository, settings, branchSettings, false)
 
 	// Assert
-	require.ErrorContains(t, err, "found both refs/remotes/origin/main and refs/remotes/origin/master")
+	require.ErrorContains(t, err, "found both 'main' and 'master' branches")
+}
+
+func Test_ShouldFailWhenLocalMasterAndOriginMainBothExistWithoutExplicitPrimaryBranch(t *testing.T) {
+	// Arrange: a local master and a remote main are both present. Ambiguity is
+	// name-based across local and remote, so this must not silently prefer local.
+	repository, worktree := initRepository(t)
+
+	primaryHash := commitMultiple(t, worktree, "Initial commit")
+
+	err := repository.Storer.SetReference(plumbing.NewHashReference(plumbing.ReferenceName("refs/remotes/origin/main"), primaryHash))
+	require.NoError(t, err)
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Create: true,
+		Branch: plumbing.ReferenceName("refs/heads/a-branch"),
+	})
+	require.NoError(t, err)
+
+	commitMultiple(t, worktree, "(+semver: patch) branch commit\n")
+
+	settings := igit.GetDefaultSettings()
+	branchSettings := &igit.BranchSettings{
+		IgnoreEnvVars: true,
+	}
+
+	// Act
+	_, err = igit.GetCurrentVersion(repository, settings, branchSettings, false)
+
+	// Assert
+	require.ErrorContains(t, err, "found both 'main' and 'master' branches")
 }
 
 func Test_ShouldCalculateVersionFromCommitsInBranch(t *testing.T) {

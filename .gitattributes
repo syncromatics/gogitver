@@ -1,0 +1,6 @@
+* text=auto eol=lf
+
+*.exe binary
+*.zip binary
+*.tar.gz binary
+*.snap binary

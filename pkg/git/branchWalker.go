@@ -5,12 +5,12 @@ import (
 	"regexp"
 	"strings"
 
-	"gopkg.in/src-d/go-git.v4/plumbing"
+	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/coreos/go-semver/semver"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/pkg/errors"
-	"gopkg.in/src-d/go-git.v4"
-	"gopkg.in/src-d/go-git.v4/plumbing/object"
 )
 
 type branchWalker struct {
@@ -18,7 +18,7 @@ type branchWalker struct {
 	head       *object.Commit
 	tagMap     map[string]string
 	settings   *Settings
-	isMaster   bool
+	isPrimary  bool
 	endHash    string
 	verbose    bool
 
@@ -30,13 +30,13 @@ type versionHolder struct {
 	versionMap []*gitVersion
 }
 
-func newBranchWalker(repository *git.Repository, head *object.Commit, tagMap map[string]string, settings *Settings, isMaster bool, endHash string, verbose bool) *branchWalker {
+func newBranchWalker(repository *git.Repository, head *object.Commit, tagMap map[string]string, settings *Settings, isPrimary bool, endHash string, verbose bool) *branchWalker {
 	return &branchWalker{
 		repository:         repository,
 		head:               head,
 		settings:           settings,
 		tagMap:             tagMap,
-		isMaster:           isMaster,
+		isPrimary:          isPrimary,
 		endHash:            endHash,
 		visited:            make(map[string]bool),
 		commitsToReconcile: make(map[string]*gitVersion),
@@ -80,7 +80,7 @@ func (b *branchWalker) GetVersion() (*semver.Version, error) {
 			baseVersion.BumpMinor()
 		case v.PatchBump:
 			baseVersion.BumpPatch()
-		default: // every commit in master has at least a patch bump
+		default: // every commit in the primary branch has at least a patch bump
 			baseVersion.BumpPatch()
 		}
 		if b.verbose {
@@ -101,7 +101,7 @@ func (b *branchWalker) GetVersionMap() ([]*gitVersion, error) {
 		return nil, err
 	}
 
-	if b.isMaster {
+	if b.isPrimary {
 		for hash, version := range b.commitsToReconcile {
 			err = b.reconcileCommit(hash, version)
 			if err != nil {

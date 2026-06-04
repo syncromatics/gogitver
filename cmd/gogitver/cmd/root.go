@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/syncromatics/gogitver/pkg/git"
 
-	gogit "github.com/go-git/go-git/v5"
+	gogit "gopkg.in/src-d/go-git.v4"
 )
 
 var rootCmd = &cobra.Command{

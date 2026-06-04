@@ -149,7 +149,13 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 
 	primaryCommit, err := r.CommitObject(primaryHead.Hash())
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get primary branch commit from reference")
+		return nil, errors.Wrapf(
+			err,
+			"failed to load primary branch commit for branch '%s' from ref '%s' (%s); this checkout may be using an unsupported shared or alternate git object store",
+			primaryBranch,
+			primaryHead.Name().String(),
+			primaryHead.Hash().String(),
+		)
 	}
 
 	primaryWalker := newBranchWalker(r, primaryCommit, tagMap, settings, true, "", verbose)

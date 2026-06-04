@@ -5,11 +5,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/go-git/go-git/v5/plumbing"
+	"gopkg.in/src-d/go-git.v4/plumbing"
 
 	"github.com/coreos/go-semver/semver"
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing/object"
+	"gopkg.in/src-d/go-git.v4"
+	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	"github.com/pkg/errors"
 )
 

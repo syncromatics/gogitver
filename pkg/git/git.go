@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/coreos/go-semver/semver"
-	git "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
+	git "gopkg.in/src-d/go-git.v4"
+	"gopkg.in/src-d/go-git.v4/plumbing"
+	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	"github.com/pkg/errors"
 )
 
@@ -149,7 +149,13 @@ func getVersion(r *git.Repository, h *plumbing.Reference, tagMap map[string]stri
 
 	primaryCommit, err := r.CommitObject(primaryHead.Hash())
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get primary branch commit from reference")
+		return nil, errors.Wrapf(
+			err,
+			"failed to load primary branch commit for branch '%s' from ref '%s' (%s); this checkout may be using an unsupported shared or alternate git object store",
+			primaryBranch,
+			primaryHead.Name().String(),
+			primaryHead.Hash().String(),
+		)
 	}
 
 	primaryWalker := newBranchWalker(r, primaryCommit, tagMap, settings, true, "", verbose)
@@ -249,7 +255,7 @@ func getPrimaryBranchReference(r *git.Repository, branchSettings *BranchSettings
 // resolvePrimaryCandidate reports whether a branch of the given name exists as a
 // local or remote ref, preferring the local ref when both are present.
 func resolvePrimaryCandidate(r *git.Repository, branchName string) (*plumbing.Reference, bool, error) {
-	localRef, hasLocal, err := getOptionalReference(r, plumbing.NewBranchReferenceName(branchName))
+	localRef, hasLocal, err := getOptionalReference(r, plumbing.ReferenceName("refs/heads/"+branchName))
 	if err != nil {
 		return nil, false, err
 	}
@@ -257,7 +263,7 @@ func resolvePrimaryCandidate(r *git.Repository, branchName string) (*plumbing.Re
 		return localRef, true, nil
 	}
 
-	return getOptionalReference(r, plumbing.NewRemoteReferenceName("origin", branchName))
+	return getOptionalReference(r, plumbing.ReferenceName("refs/remotes/origin/"+branchName))
 }
 
 func getOptionalReference(r *git.Repository, referenceName plumbing.ReferenceName) (*plumbing.Reference, bool, error) {
@@ -273,12 +279,12 @@ func getOptionalReference(r *git.Repository, referenceName plumbing.ReferenceNam
 }
 
 func getBranchReference(r *git.Repository, branchName string) (*plumbing.Reference, error) {
-	ref, err := r.Reference(plumbing.NewBranchReferenceName(branchName), false)
+	ref, err := r.Reference(plumbing.ReferenceName("refs/heads/"+branchName), false)
 	if err == nil {
 		return ref, nil
 	}
 
-	ref, err = r.Reference(plumbing.NewRemoteReferenceName("origin", branchName), false)
+	ref, err = r.Reference(plumbing.ReferenceName("refs/remotes/origin/"+branchName), false)
 	if err == nil {
 		return ref, nil
 	}
